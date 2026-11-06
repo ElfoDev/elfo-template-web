@@ -12,7 +12,7 @@ export function AppHeader() {
     <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-5xl items-center gap-6 px-4">
         <Link to="/" className="font-semibold tracking-tight">
-          Foreman Web
+          Elfo Web
         </Link>
         <nav aria-label="Principal" className="flex items-center gap-1 text-sm">
           {navItems.map((item) => (

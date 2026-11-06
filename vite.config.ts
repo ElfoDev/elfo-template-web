@@ -27,7 +27,7 @@ const OPTIONAL_SECRETS = [
 /**
  * Secret do Better Auth para dev/preview/e2e quando o `.dev.vars` não define
  * `BETTER_AUTH_SECRET`. Só no `serve` local: nunca vai para o build nem o deploy
- * (em produção o Foreman gera um secret de verdade).
+ * (em produção o Elfo gera um secret de verdade).
  */
 const DEV_AUTH_SECRET = "dev-only-better-auth-secret-nao-use-em-producao";
 

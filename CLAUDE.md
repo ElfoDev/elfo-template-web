@@ -190,7 +190,7 @@ O recurso "projects" é o exemplo completo: siga os mesmos arquivos para um recu
 
 | Variável                                                | Onde                        | Obrigatória | Para quê                                           |
 | ------------------------------------------------------- | --------------------------- | ----------- | -------------------------------------------------- |
-| `BETTER_AUTH_SECRET`                                    | secret (`secrets.required`) | produção    | Assina os cookies. Foreman gera (`generate: true`) |
+| `BETTER_AUTH_SECRET`                                    | secret (`secrets.required`) | produção    | Assina os cookies. Elfo gera (`generate: true`) |
 | `BETTER_AUTH_URL`                                       | `wrangler.jsonc → vars`     | não         | URL pública; vazia = origem do request             |
 | `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | secret opcional             | não         | Liga o login com GitHub (precisa dos dois)         |
 | `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | secret opcional             | não         | Liga o login com Google (precisa dos dois)         |
@@ -200,7 +200,7 @@ O recurso "projects" é o exemplo completo: siga os mesmos arquivos para um recu
   e as rotas protegidas respondem 503.
 - **OAuth**: callback URL = `<origem>/api/auth/callback/github` (ou `/google`). Um app OAuth por
   ambiente (localhost e produção têm URLs diferentes). Onde criar: descrições em `foreman.json`
-  e comentários em `.dev.vars.example`. Os nomes levam o prefixo `OAUTH_` porque o Foreman não
+  e comentários em `.dev.vars.example`. Os nomes levam o prefixo `OAUTH_` porque o Elfo não
   aceita secrets que começam com `GITHUB_` (reservado do GitHub Actions): **não** declare
   `GITHUB_*` em `foreman.json`.
 

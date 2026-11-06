@@ -1,6 +1,6 @@
 # Claude reviews every pull request: when it opens, on every push, when it leaves draft or reopens.
-# It runs on the same Claude plan token as the Foreman agent (CLAUDE_CODE_OAUTH_TOKEN) and comments as github-actions[bot].
-# It only comments (inline + one summary). It never approves, requests changes or pushes. Foreman ignores bot comments
+# It runs on the same Claude plan token as the Elfo agent (CLAUDE_CODE_OAUTH_TOKEN) and comments as github-actions[bot].
+# It only comments (inline + one summary). It never approves, requests changes or pushes. Elfo ignores bot comments
 # and reviews, so the review doesn't move cards or start the PR fixer.
 name: Claude review
 
@@ -34,9 +34,9 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The workflow's own token: no extra GitHub App to install.
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Foreman agents open most PRs here (as foreman-agents[bot], or foreman-preview[bot] from staging/previews).
+          # Elfo agents open most PRs here (as elfo-agents[bot], or elfo-preview[bot] from staging/previews).
           # The action skips bot-initiated runs unless the bot is listed.
-          allowed_bots: "foreman-agents,foreman-preview"
+          allowed_bots: "elfo-agents,elfo-preview"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}

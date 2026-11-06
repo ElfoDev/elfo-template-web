@@ -6,7 +6,7 @@ import { HealthStatus } from "./health-status";
 
 const healthy: HealthResponse = {
   status: "ok",
-  app: "Foreman Web",
+  app: "Elfo Web",
   timestamp: "2026-01-01T12:00:00.000Z",
   services: [],
 };
@@ -18,7 +18,7 @@ describe("<HealthStatus />", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("Verificando a API…");
     expect(await screen.findByText("Operacional")).toBeInTheDocument();
-    expect(screen.getByTestId("health-app")).toHaveTextContent("Foreman Web");
+    expect(screen.getByTestId("health-app")).toHaveTextContent("Elfo Web");
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/health$/),
       expect.anything(),

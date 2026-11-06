@@ -1,6 +1,6 @@
-# foreman-template-web
+# elfo-template-web
 
-Template [Foreman](https://foreman.plagesribeiro.workers.dev) de app web fullstack na Cloudflare:
+Template [Elfo](https://foreman.plagesribeiro.workers.dev) de app web fullstack na Cloudflare:
 front React e API Hono **no mesmo Worker**.
 
 - **Front**: Vite, React 19, TanStack Router + Query, Tailwind CSS v4, shadcn/ui

@@ -28,7 +28,7 @@ declare global {
    * Secrets opcionais (OAuth). Ficam fora de `wrangler.jsonc → secrets.required`
    * de propósito: lá o deploy falharia sem eles. Por isso o `cf-typegen` não os
    * conhece e o tipo é declarado aqui; no `pnpm dev`, o vite.config.ts os lê do
-   * `.dev.vars`. Em produção, chegam como secrets do Worker (Foreman/`wrangler secret put`).
+   * `.dev.vars`. Em produção, chegam como secrets do Worker (Elfo/`wrangler secret put`).
    */
   interface Env {
     OAUTH_GITHUB_CLIENT_ID?: string;

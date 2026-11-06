@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "foreman-template-web",
+  "name": "elfo-template-web",
   "main": "worker/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -12,7 +12,7 @@
     "run_worker_first": ["/api/*"]
   },
   "vars": {
-    "APP_NAME": "Foreman Web",
+    "APP_NAME": "Elfo Web",
     // URL pública do app, usada pelo Better Auth (links de email, callbacks do
     // OAuth). Vazia = a origem de cada request, o que serve para o *.workers.dev
     // e para o dev. Defina ao usar um domínio próprio (ex.: "https://app.exemplo.com").
@@ -21,7 +21,7 @@
   "secrets": {
     // Connection string do Postgres (Neon). Em dev, vem do .dev.vars ou, sem
     // ela, do PGlite local que o `pnpm dev` sobe (ver vite.config.ts).
-    // BETTER_AUTH_SECRET assina os cookies de sessão (Foreman gera em produção;
+    // BETTER_AUTH_SECRET assina os cookies de sessão (Elfo gera em produção;
     // no dev/preview, sem ela no .dev.vars, o vite.config.ts usa uma de dev).
     // Os de OAuth (OAUTH_GITHUB_*, OAUTH_GOOGLE_*) são opcionais e por isso NÃO ficam aqui:
     // ver worker/types.ts.

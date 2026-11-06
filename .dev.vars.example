@@ -4,7 +4,7 @@
 #   cp .dev.vars.example .dev.vars
 #
 # O .dev.vars está no .gitignore: NUNCA commite valores reais.
-# Em produção, os secrets são configurados no Cloudflare pelo Foreman
+# Em produção, os secrets são configurados no Cloudflare pelo Elfo
 # (lista em foreman.json → "secrets"); variáveis não secretas ficam em
 # wrangler.jsonc → "vars".
 #
@@ -13,7 +13,7 @@
 # (atualiza worker/env.d.ts).
 
 # Nome exibido no header e retornado por /api/health (sobrescreve o valor de wrangler.jsonc).
-# APP_NAME="Foreman Web (local)"
+# APP_NAME="Elfo Web (local)"
 
 # Banco Postgres (Neon). OPCIONAL no dev: sem ela, o `pnpm dev` sobe um PGlite
 # local em .wrangler/pglite (sem conta em lugar nenhum). Use para apontar o dev
@@ -25,7 +25,7 @@
 
 # Assina os cookies de sessão. OPCIONAL no dev: sem ela, o `pnpm dev` (e o
 # `pnpm preview`/e2e) usa uma chave fixa só de desenvolvimento. Em produção o
-# Foreman gera uma (foreman.json → secrets). Para gerar a sua:
+# Elfo gera uma (foreman.json → secrets). Para gerar a sua:
 #   openssl rand -base64 32
 # BETTER_AUTH_SECRET="cole-aqui-o-valor-gerado"
 

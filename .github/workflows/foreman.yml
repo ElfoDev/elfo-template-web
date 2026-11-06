@@ -1,13 +1,13 @@
-# Installed by Foreman (https://foreman.plagesribeiro.workers.dev). Runs agent steps for your board on YOUR Claude plan.
-# The CLAUDE_CODE_OAUTH_TOKEN secret is read only by this job; Foreman never sees it.
-name: Foreman agent
-run-name: "Foreman · ${{ inputs.label }}"
+# Installed by Elfo (https://elfo.dev). Runs agent steps for your board on YOUR Claude plan.
+# The CLAUDE_CODE_OAUTH_TOKEN secret is read only by this job; Elfo never sees it.
+name: Elfo agent
+run-name: "Elfo · ${{ inputs.label }}"
 
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: Foreman run id
+        description: Elfo run id
         required: true
         type: string
       label:
@@ -36,9 +36,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run the Foreman agent
+      - name: Run the Elfo agent
         env:
-          FOREMAN_URL: https://foreman.plagesribeiro.workers.dev
+          FOREMAN_URL: https://elfo.dev
           FOREMAN_RUN_ID: ${{ inputs.run_id }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
         run: |
