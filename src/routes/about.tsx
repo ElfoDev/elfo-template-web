@@ -12,6 +12,10 @@ const stack = [
     name: "Banco",
     items: "Postgres com Drizzle ORM: Neon em produção, PGlite no dev e nos testes",
   },
+  {
+    name: "Autenticação",
+    items: "Better Auth: email e senha (+ GitHub/Google opcionais), sessão por cookie",
+  },
   { name: "Compartilhado", items: "Schemas zod em shared/, usados no front e na API" },
   { name: "Qualidade", items: "Biome, Vitest + Testing Library, Playwright" },
 ];

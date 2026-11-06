@@ -21,6 +21,28 @@
 # Também é a URL usada por `pnpm db:migrate` / `pnpm db:studio`.
 # DATABASE_URL="postgresql://user:password@ep-exemplo-123456.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
-# A partir do WEB-3 (Better Auth):
-# BETTER_AUTH_SECRET="gere com: openssl rand -base64 32"
+# --- Autenticação (Better Auth) ---------------------------------------------
+
+# Assina os cookies de sessão. OPCIONAL no dev: sem ela, o `pnpm dev` (e o
+# `pnpm preview`/e2e) usa uma chave fixa só de desenvolvimento. Em produção o
+# Foreman gera uma (foreman.json → secrets). Para gerar a sua:
+#   openssl rand -base64 32
+# BETTER_AUTH_SECRET="cole-aqui-o-valor-gerado"
+
+# URL pública do app (links de email e callbacks do OAuth). OPCIONAL: vazia, o
+# Better Auth usa a origem de cada request (http://localhost:5173 no dev).
 # BETTER_AUTH_URL="http://localhost:5173"
+
+# Login com GitHub (opcional): só aparece se as DUAS variáveis existirem.
+# Crie um OAuth App em https://github.com/settings/developers com
+# "Authorization callback URL" = http://localhost:5173/api/auth/callback/github
+# (um app por ambiente: em produção, use o domínio do deploy).
+# GITHUB_CLIENT_ID="Iv1.0000000000000000"
+# GITHUB_CLIENT_SECRET="0000000000000000000000000000000000000000"
+
+# Login com Google (opcional): só aparece se as DUAS variáveis existirem.
+# Em https://console.cloud.google.com/apis/credentials → OAuth client ID (Web
+# application), com "Authorized redirect URI" =
+# http://localhost:5173/api/auth/callback/google
+# GOOGLE_CLIENT_ID="000000000000-exemplo.apps.googleusercontent.com"
+# GOOGLE_CLIENT_SECRET="GOCSPX-exemplo"
