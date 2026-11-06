@@ -13,5 +13,13 @@
   },
   "vars": {
     "APP_NAME": "Foreman Web"
+  },
+  "secrets": {
+    // Connection string do Postgres (Neon). Em dev, vem do .dev.vars ou, sem
+    // ela, do PGlite local que o `pnpm dev` sobe (ver vite.config.ts).
+    "required": ["DATABASE_URL"]
   }
+  // Hyperdrive (opcional): pool de conexões na borda, na frente do Neon.
+  // Veja "Banco de dados → Hyperdrive" no CLAUDE.md antes de ativar.
+  // "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<id do hyperdrive>" }]
 }

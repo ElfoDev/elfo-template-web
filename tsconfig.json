@@ -4,5 +4,14 @@
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.worker.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  // Só para ferramentas que leem o tsconfig da raiz (ex.: CLI do shadcn) resolverem
+  // os aliases; a compilação usa os projetos referenciados acima.
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shared/*": ["./shared/*"],
+      "@worker/*": ["./worker/*"]
+    }
+  }
 }

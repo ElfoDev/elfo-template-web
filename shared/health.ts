@@ -18,7 +18,7 @@ export const healthResponseSchema = z.object({
   status: serviceStatusSchema,
   app: z.string(),
   timestamp: z.iso.datetime(),
-  /** Dependências externas (banco, auth...). Vazio até o WEB-2 ligar o Neon. */
+  /** Dependências externas (banco, auth...). Hoje: "database" (`select 1` no Postgres). */
   services: z.array(serviceHealthSchema),
 });
 export type HealthResponse = z.infer<typeof healthResponseSchema>;
