@@ -1,0 +1,46 @@
+# Installed by Foreman (https://foreman.plagesribeiro.workers.dev). Runs agent steps for your board on YOUR Claude plan.
+# The CLAUDE_CODE_OAUTH_TOKEN secret is read only by this job; Foreman never sees it.
+name: Foreman agent
+run-name: "Foreman · ${{ inputs.label }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Foreman run id
+        required: true
+        type: string
+      label:
+        description: Card and column, for the run list
+        required: false
+        type: string
+        default: agent run
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: foreman-${{ inputs.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the Foreman agent
+        env:
+          FOREMAN_URL: https://foreman.plagesribeiro.workers.dev
+          FOREMAN_RUN_ID: ${{ inputs.run_id }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          curl -fsSL "$FOREMAN_URL/runner/v1/runner.mjs" -o "$RUNNER_TEMP/foreman-runner.mjs"
+          node "$RUNNER_TEMP/foreman-runner.mjs"
