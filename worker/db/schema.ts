@@ -1,4 +1,13 @@
-import { boolean, index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 /**
  * Schema do banco (Drizzle). Depois de mudar este arquivo:
@@ -82,6 +91,19 @@ export const verifications = pgTable(
   (table) => [index("verifications_identifier_idx").on(table.identifier)],
 );
 
+/**
+ * Contadores do rate limit do Better Auth (`rateLimit.storage: "database"`). Cada
+ * linha é um balde `<ip>|<rota>`. Em memória o limite não vale no Workers (cada
+ * isolate tem a sua), por isso fica no banco. Campos e nomes fixos do Better Auth.
+ */
+export const rateLimits = pgTable("rate_limits", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  /** Epoch em milissegundos da última requisição contada. */
+  lastRequest: bigint("last_request", { mode: "number" }).notNull(),
+});
+
 // ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
@@ -90,10 +112,14 @@ export const projects = pgTable(
   "projects",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    /** Dono do projeto: cada usuário só enxerga (e altera) os próprios. */
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+    /**
+     * Dono do projeto: cada usuário só enxerga (e altera) os próprios. Nullable de
+     * propósito: a migration que adicionou a coluna não apaga os projetos criados
+     * antes da autenticação; sem dono, eles não aparecem para ninguém (toda query
+     * filtra por `user_id`). Para apertar para NOT NULL, veja "Projetos sem dono"
+     * em CLAUDE.md.
+     */
+    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
     ...timestamps,

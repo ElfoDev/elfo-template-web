@@ -18,10 +18,10 @@ const alias = {
  * para o Worker por aqui. Ver worker/types.ts.
  */
 const OPTIONAL_SECRETS = [
-  "GITHUB_CLIENT_ID",
-  "GITHUB_CLIENT_SECRET",
-  "GOOGLE_CLIENT_ID",
-  "GOOGLE_CLIENT_SECRET",
+  "OAUTH_GITHUB_CLIENT_ID",
+  "OAUTH_GITHUB_CLIENT_SECRET",
+  "OAUTH_GOOGLE_CLIENT_ID",
+  "OAUTH_GOOGLE_CLIENT_SECRET",
 ];
 
 /**

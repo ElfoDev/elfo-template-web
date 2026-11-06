@@ -31,9 +31,9 @@ declare global {
    * `.dev.vars`. Em produção, chegam como secrets do Worker (Foreman/`wrangler secret put`).
    */
   interface Env {
-    GITHUB_CLIENT_ID?: string;
-    GITHUB_CLIENT_SECRET?: string;
-    GOOGLE_CLIENT_ID?: string;
-    GOOGLE_CLIENT_SECRET?: string;
+    OAUTH_GITHUB_CLIENT_ID?: string;
+    OAUTH_GITHUB_CLIENT_SECRET?: string;
+    OAUTH_GOOGLE_CLIENT_ID?: string;
+    OAUTH_GOOGLE_CLIENT_SECRET?: string;
   }
 }

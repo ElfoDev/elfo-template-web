@@ -8,7 +8,7 @@ const LABELS: Record<SocialProvider, string> = { github: "GitHub", google: "Goog
 
 /**
  * Botões "Continuar com GitHub/Google", só para os provedores configurados no
- * Worker (envs GITHUB_* / GOOGLE_*). Sem nenhum, não renderiza nada.
+ * Worker (envs OAUTH_GITHUB_* / OAUTH_GOOGLE_*). Sem nenhum, não renderiza nada.
  */
 export function SocialSignIn({ callbackURL }: { callbackURL: string }) {
   const providers = useQuery({ ...authProvidersQueryOptions(), meta: { silent: true } });

@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { PASSWORD, uniqueEmail } from "./helpers";
+import { expect } from "@playwright/test";
+import { PASSWORD, randomIp, test, uniqueEmail } from "./helpers";
 
 /** Cadastro, login e logout de ponta a ponta (Better Auth + PGlite do preview). */
 test("cadastra, sai e entra de novo", async ({ page }) => {
@@ -52,7 +52,10 @@ test("um usuário não vê os projetos de outro", async ({ browser, baseURL }) =
   const name = `Projeto privado ${Date.now().toString(36)}`;
 
   // Pessoa A cria um projeto.
-  const a = await browser.newPage({ baseURL });
+  const a = await browser.newPage({
+    baseURL,
+    extraHTTPHeaders: { "cf-connecting-ip": randomIp() },
+  });
   await a.goto("/signup");
   await a.getByLabel("Nome").fill("Pessoa A");
   await a.getByLabel("Email").fill(uniqueEmail("a"));
@@ -65,7 +68,10 @@ test("um usuário não vê os projetos de outro", async ({ browser, baseURL }) =
   const projectUrl = await a.getByRole("link", { name, exact: true }).getAttribute("href");
 
   // Pessoa B (outro contexto = outros cookies) não vê nem abre.
-  const b = await browser.newPage({ baseURL });
+  const b = await browser.newPage({
+    baseURL,
+    extraHTTPHeaders: { "cf-connecting-ip": randomIp() },
+  });
   await b.goto("/signup");
   await b.getByLabel("Nome").fill("Pessoa B");
   await b.getByLabel("Email").fill(uniqueEmail("b"));

@@ -1,5 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { signUpViaApi } from "./helpers";
+import { expect } from "@playwright/test";
+import { signUpViaApi, test } from "./helpers";
 
 /**
  * CRUD de projetos no browser, contra o build de produção e um banco real

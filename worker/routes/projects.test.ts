@@ -1,5 +1,6 @@
 import { type Project, projectSchema } from "@shared/projects";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { projects } from "../db/schema";
 import { signUp, type TestUser } from "../test/auth";
 import { createTestDb, type TestDb, testEnv } from "../test/db";
 
@@ -241,6 +242,20 @@ describe("autorização: cada usuário só vê os próprios projetos", () => {
 
     expect(res.status).toBe(404);
     expect((await request(`/${alicesProject.id}`)).status).toBe(200);
+  });
+
+  it("projetos sem dono (criados antes da autenticação) não aparecem para ninguém", async () => {
+    const [orphan] = await testDb.db
+      .insert(projects)
+      .values({ name: "Sem dono", userId: null })
+      .returning();
+    if (!orphan) throw new Error("insert falhou");
+
+    const list = projectSchema.array().parse(await (await request("")).json());
+    expect(list.map((project) => project.id)).toEqual([alicesProject.id]);
+    expect((await request(`/${orphan.id}`)).status).toBe(404);
+    expect((await request(`/${orphan.id}`, { method: "DELETE" })).status).toBe(404);
+    expect(await testDb.db.query.projects.findMany()).toHaveLength(2);
   });
 
   it("ignora um userId enviado no corpo: o dono é sempre quem está logado", async () => {

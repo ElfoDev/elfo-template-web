@@ -37,12 +37,12 @@
 # Crie um OAuth App em https://github.com/settings/developers com
 # "Authorization callback URL" = http://localhost:5173/api/auth/callback/github
 # (um app por ambiente: em produção, use o domínio do deploy).
-# GITHUB_CLIENT_ID="Iv1.0000000000000000"
-# GITHUB_CLIENT_SECRET="0000000000000000000000000000000000000000"
+# OAUTH_GITHUB_CLIENT_ID="Iv1.0000000000000000"
+# OAUTH_GITHUB_CLIENT_SECRET="0000000000000000000000000000000000000000"
 
 # Login com Google (opcional): só aparece se as DUAS variáveis existirem.
 # Em https://console.cloud.google.com/apis/credentials → OAuth client ID (Web
 # application), com "Authorized redirect URI" =
 # http://localhost:5173/api/auth/callback/google
-# GOOGLE_CLIENT_ID="000000000000-exemplo.apps.googleusercontent.com"
-# GOOGLE_CLIENT_SECRET="GOCSPX-exemplo"
+# OAUTH_GOOGLE_CLIENT_ID="000000000000-exemplo.apps.googleusercontent.com"
+# OAUTH_GOOGLE_CLIENT_SECRET="GOCSPX-exemplo"

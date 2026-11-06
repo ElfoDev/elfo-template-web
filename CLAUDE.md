@@ -169,7 +169,8 @@ O recurso "projects" é o exemplo completo: siga os mesmos arquivos para um recu
 
 - **Better Auth** (`worker/auth.ts` → `createAuth`) com o adapter Drizzle no mesmo banco. Tabelas
   `users`, `sessions`, `accounts` (uma por forma de login; a senha fica aqui, com hash scrypt) e
-  `verifications` em `worker/db/schema.ts`. Ids são texto gerado pelo Better Auth.
+  `verifications` (mais `rate_limits`, os contadores do rate limit) em `worker/db/schema.ts`. Ids
+  são texto gerado pelo Better Auth.
 - A instância é **por request** (a conexão do banco também é): `getAuth(c)` cria na primeira
   chamada, depois do `withDb`. Não guarde em escopo de módulo.
 - Endpoints em `/api/auth/*` (`worker/routes/auth.ts`): `sign-up/email`, `sign-in/email`,
@@ -187,19 +188,46 @@ O recurso "projects" é o exemplo completo: siga os mesmos arquivos para um recu
 
 ### Configuração
 
-| Variável                                    | Onde                        | Obrigatória | Para quê                                           |
-| ------------------------------------------- | --------------------------- | ----------- | -------------------------------------------------- |
-| `BETTER_AUTH_SECRET`                        | secret (`secrets.required`) | produção    | Assina os cookies. Foreman gera (`generate: true`) |
-| `BETTER_AUTH_URL`                           | `wrangler.jsonc → vars`     | não         | URL pública; vazia = origem do request             |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | secret opcional             | não         | Liga o login com GitHub (precisa dos dois)         |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | secret opcional             | não         | Liga o login com Google (precisa dos dois)         |
+| Variável                                                | Onde                        | Obrigatória | Para quê                                           |
+| ------------------------------------------------------- | --------------------------- | ----------- | -------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                                    | secret (`secrets.required`) | produção    | Assina os cookies. Foreman gera (`generate: true`) |
+| `BETTER_AUTH_URL`                                       | `wrangler.jsonc → vars`     | não         | URL pública; vazia = origem do request             |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | secret opcional             | não         | Liga o login com GitHub (precisa dos dois)         |
+| `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | secret opcional             | não         | Liga o login com Google (precisa dos dois)         |
 
 - **Dev/preview/e2e**: sem `BETTER_AUTH_SECRET` no `.dev.vars`, o `vite.config.ts` usa uma chave
   fixa só de desenvolvimento (nunca vai para o build). Em produção, sem o secret, `/api/auth/*`
   e as rotas protegidas respondem 503.
 - **OAuth**: callback URL = `<origem>/api/auth/callback/github` (ou `/google`). Um app OAuth por
   ambiente (localhost e produção têm URLs diferentes). Onde criar: descrições em `foreman.json`
-  e comentários em `.dev.vars.example`.
+  e comentários em `.dev.vars.example`. Os nomes levam o prefixo `OAUTH_` porque o Foreman não
+  aceita secrets que começam com `GITHUB_` (reservado do GitHub Actions): **não** declare
+  `GITHUB_*` em `foreman.json`.
+
+### Segurança: vínculo de contas e rate limit
+
+- **Sem vínculo automático por email com conta não verificada** (_account pre-hijacking_): alguém
+  cadastra email + senha com o email da vítima, sem provar que é dele, e espera a vítima entrar com
+  GitHub/Google; se o login social fosse vinculado àquela conta, o atacante seguiria dono dela pela
+  senha. Em `createAuth` (`account.accountLinking`) o vínculo implícito só vale se o email da
+  conta local **já foi verificado** (`requireLocalEmailVerified: true`, sem `trustedProviders`) e,
+  enquanto `REQUIRE_EMAIL_VERIFICATION = false`, fica desligado (`disableImplicitLinking`). Efeito:
+  quem tem conta com senha e tenta entrar com um provedor cujo email é o mesmo recebe
+  `account_not_linked` na volta do OAuth; para usar os dois, entra com a senha e vincula o provedor
+  logado (`authClient.linkSocial`). Ao ligar a verificação de email, o vínculo passa a funcionar para
+  contas verificadas. Não afrouxe essas opções sem rever o risco. Teste do cenário: "login social"
+  em `worker/routes/auth.test.ts`.
+- **Rate limit no banco**: `rateLimit: { enabled: true, storage: "database" }` (tabela
+  `rate_limits`, migration em `drizzle/`). A memória (padrão do Better Auth) é por isolate e não
+  limita nada no Workers, e o Better Auth só liga o limite sozinho com `NODE_ENV=production`, que
+  o Worker não define: por isso é explícito. Padrão: 100 requests/10s por rota e 3/10s em
+  `sign-in`/`sign-up`/`change-*` (429 com `X-Retry-After`). O IP vem de `cf-connecting-ip`
+  (`advanced.ipAddress`): a borda da Cloudflare o sobrescreve, então não dá para forjar. Nos
+  testes, `authRequest` (`worker/test/auth.ts`) usa um IP novo a cada chamada; no e2e, o `test` de
+  `e2e/helpers.ts` faz o mesmo por teste. Quem não passa pela Cloudflare (ex.: `pnpm preview`)
+  aceita o header de qualquer cliente.
+- **Senha**: mínimo de 8 e máximo de 128 caracteres (`PASSWORD_MIN_LENGTH`/`PASSWORD_MAX_LENGTH`
+  em `shared/auth.ts`, aplicados no formulário e no Better Auth).
 
 ### Verificação de email
 
@@ -251,6 +279,23 @@ Para onde o drizzle-kit (`db:migrate`, `db:studio`) aponta, em ordem (`drizzle.c
 `.wrangler/pglite/data` direto (com o dev parado). Migrations em produção: rode
 `DATABASE_URL=<url> pnpm db:migrate` (ou no pipeline de deploy) **antes** de publicar o código
 que depende delas, e prefira mudanças compatíveis com a versão anterior (adicionar antes de remover).
+
+### Projetos sem dono (`projects.user_id` nullable)
+
+A migration que introduziu a autenticação **não apaga dados**: `projects.user_id` nasceu
+_nullable_. Projetos criados antes do login ficam com `user_id` nulo; como toda query filtra por
+`user_id` do usuário logado, eles simplesmente não aparecem para ninguém (continuam no banco). Para
+apertar a coluna para `NOT NULL` depois:
+
+1. Decida o destino de cada linha órfã: atribua a um usuário
+   (`UPDATE projects SET user_id = '<id do usuário>' WHERE user_id IS NULL;`) ou apague
+   (`DELETE FROM projects WHERE user_id IS NULL;`). Confira antes com
+   `SELECT count(*) FROM projects WHERE user_id IS NULL;`.
+2. Em `worker/db/schema.ts`, volte a `.notNull()` em `projects.userId` e rode
+   `pnpm db:generate --name projects_user_id_not_null` (gera `ALTER COLUMN ... SET NOT NULL`).
+3. Aplique o passo 1 **antes** da migration nova (no mesmo deploy, ou à mão no banco): com linhas
+   nulas ela falha. Se quiser tudo na migration, adicione o `UPDATE`/`DELETE` no início do SQL
+   gerado, antes de ser aplicada em qualquer banco.
 
 ### Hyperdrive (opcional)
 

@@ -14,6 +14,14 @@ CREATE TABLE "accounts" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "rate_limits" (
+	"id" text PRIMARY KEY NOT NULL,
+	"key" text NOT NULL,
+	"count" integer NOT NULL,
+	"last_request" bigint NOT NULL,
+	CONSTRAINT "rate_limits_key_unique" UNIQUE("key")
+);
+--> statement-breakpoint
 CREATE TABLE "sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
@@ -46,10 +54,7 @@ CREATE TABLE "verifications" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
--- Projetos criados antes da autenticação não têm dono e ficariam inacessíveis
--- (e a coluna NOT NULL abaixo falharia com linhas existentes): são apagados.
-DELETE FROM "projects";--> statement-breakpoint
-ALTER TABLE "projects" ADD COLUMN "user_id" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "projects" ADD COLUMN "user_id" text;--> statement-breakpoint
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "accounts_user_id_idx" ON "accounts" USING btree ("user_id");--> statement-breakpoint

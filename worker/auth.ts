@@ -22,11 +22,21 @@ export function socialProviders(
   env: Env,
 ): Partial<Record<SocialProvider, { clientId: string; clientSecret: string }>> {
   return {
-    ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
-      ? { github: { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET } }
+    ...(env.OAUTH_GITHUB_CLIENT_ID && env.OAUTH_GITHUB_CLIENT_SECRET
+      ? {
+          github: {
+            clientId: env.OAUTH_GITHUB_CLIENT_ID,
+            clientSecret: env.OAUTH_GITHUB_CLIENT_SECRET,
+          },
+        }
       : {}),
-    ...(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
-      ? { google: { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET } }
+    ...(env.OAUTH_GOOGLE_CLIENT_ID && env.OAUTH_GOOGLE_CLIENT_SECRET
+      ? {
+          google: {
+            clientId: env.OAUTH_GOOGLE_CLIENT_ID,
+            clientSecret: env.OAUTH_GOOGLE_CLIENT_SECRET,
+          },
+        }
       : {}),
   };
 }
@@ -69,6 +79,33 @@ export function createAuth({ db, env, baseURL }: { db: Database; env: Env; baseU
         }),
     },
     socialProviders: socialProviders(env),
+    account: {
+      accountLinking: {
+        // Anti "account pre-hijacking": alguém cria uma conta (email + senha) com o
+        // email da vítima, sem prová-lo, e espera a vítima entrar com GitHub/Google;
+        // se o login social fosse vinculado a essa conta, o atacante continuaria
+        // dono dela pela senha. Por isso o vínculo automático por email só acontece
+        // quando o email da conta local JÁ foi verificado (e o do provedor também).
+        // Enquanto a verificação de email estiver desligada (nenhuma conta local é
+        // verificada), o vínculo implícito fica desligado de vez: quem tem conta com
+        // senha e entra com um provedor recebe "account not linked" e deve vincular
+        // o provedor logado (`linkSocial`).
+        enabled: true,
+        disableImplicitLinking: !REQUIRE_EMAIL_VERIFICATION,
+        requireLocalEmailVerified: true,
+        // Nenhum provedor é confiável "por nome": só vale o email verificado.
+        trustedProviders: [],
+      },
+    },
+    // Limite de tentativas (login, cadastro, reset…) guardado no banco: a memória
+    // padrão é por isolate e não limita nada no Workers. Ligado sempre: o Better
+    // Auth só liga sozinho com NODE_ENV=production, que o Worker não tem.
+    rateLimit: { enabled: true, storage: "database" },
+    advanced: {
+      // Atrás da Cloudflare o IP real do cliente vem em `cf-connecting-ip` (a borda
+      // sobrescreve o header). Sem isso todos caem no mesmo balde.
+      ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] },
+    },
     telemetry: { enabled: false },
   });
 }

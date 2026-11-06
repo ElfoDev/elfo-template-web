@@ -23,7 +23,7 @@
     // ela, do PGlite local que o `pnpm dev` sobe (ver vite.config.ts).
     // BETTER_AUTH_SECRET assina os cookies de sessão (Foreman gera em produção;
     // no dev/preview, sem ela no .dev.vars, o vite.config.ts usa uma de dev).
-    // Os de OAuth (GITHUB_*, GOOGLE_*) são opcionais e por isso NÃO ficam aqui:
+    // Os de OAuth (OAUTH_GITHUB_*, OAUTH_GOOGLE_*) são opcionais e por isso NÃO ficam aqui:
     // ver worker/types.ts.
     "required": ["DATABASE_URL", "BETTER_AUTH_SECRET"]
   }

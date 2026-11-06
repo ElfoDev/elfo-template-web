@@ -1,6 +1,23 @@
-import { expect, type Page } from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 export const PASSWORD = "senha-segura-123";
+
+/**
+ * O rate limit do Better Auth conta por IP (`cf-connecting-ip`) e o e2e roda tudo
+ * de um IP só, em paralelo: cada teste manda um IP próprio para não esbarrar nele.
+ */
+export function randomIp() {
+  const byte = () => Math.floor(Math.random() * 254) + 1;
+  return `10.${byte()}.${byte()}.${byte()}`;
+}
+
+/** `test` do Playwright em que cada teste (e as páginas dele) vem de um IP diferente. */
+export const test = base.extend({
+  // biome-ignore lint/correctness/noEmptyPattern: o Playwright exige o destructuring no 1º argumento da fixture
+  extraHTTPHeaders: async ({}, use) => {
+    await use({ "cf-connecting-ip": randomIp() });
+  },
+});
 
 /** Email único por teste: o banco do preview é compartilhado entre os testes. */
 export function uniqueEmail(prefix = "e2e") {
