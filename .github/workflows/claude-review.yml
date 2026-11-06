@@ -1,0 +1,50 @@
+# Claude reviews every pull request: when it opens, on every push, when it leaves draft or reopens.
+# It runs on the same Claude plan token as the Foreman agent (CLAUDE_CODE_OAUTH_TOKEN) and comments as github-actions[bot].
+# It only comments (inline + one summary). It never approves, requests changes or pushes. Foreman ignores bot comments
+# and reviews, so the review doesn't move cards or start the PR fixer.
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+# A newer push replaces the review still running for the same PR.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Pull requests from forks don't get the repository's secrets.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The workflow's own token: no extra GitHub App to install.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request. The PR branch is checked out in the working directory: read `gh pr view`, `gh pr diff` and the code around the changes.
+
+            Look for what would hurt in production: bugs and edge cases, security (authentication, access control, secrets, injection), data and migration risks, and risky logic without tests. Skip style and formatting nits.
+
+            For each real problem, post an inline comment on the line with `mcp__github_inline_comment__create_inline_comment` (confirmed: true): what goes wrong, when, and how to fix it.
+            Then post one short summary with `gh pr comment`: what the PR does and the problems you found, or that you found none. If the PR already has your earlier reviews, focus on what changed since.
+
+            Only comment. Never approve, request changes or push commits.
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep"
