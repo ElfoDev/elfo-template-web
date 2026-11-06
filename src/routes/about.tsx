@@ -8,6 +8,10 @@ export const Route = createFileRoute("/about")({
 const stack = [
   { name: "Front", items: "Vite, React 19, TanStack Router e Query, Tailwind CSS v4, shadcn/ui" },
   { name: "API", items: "Hono no Cloudflare Worker, cliente tipado via Hono RPC" },
+  {
+    name: "Banco",
+    items: "Postgres com Drizzle ORM: Neon em produção, PGlite no dev e nos testes",
+  },
   { name: "Compartilhado", items: "Schemas zod em shared/, usados no front e na API" },
   { name: "Qualidade", items: "Biome, Vitest + Testing Library, Playwright" },
 ];

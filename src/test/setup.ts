@@ -7,3 +7,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+// jsdom não implementa scrollTo (usado pelo scrollRestoration do router).
+window.scrollTo = () => {};
