@@ -48,14 +48,19 @@ export interface LocalDb {
 }
 
 /**
- * Lê `DATABASE_URL` do ambiente ou do `.dev.vars` (o mesmo arquivo que o
- * Worker usa em dev). Sem ela, o dev usa o PGlite local.
+ * Lê uma variável do ambiente ou do `.dev.vars` (o mesmo arquivo que o Worker
+ * usa em dev). Vazia conta como não definida.
  */
-export function readDatabaseUrl(): string | undefined {
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+export function readDevVar(name: string): string | undefined {
+  if (process.env[name]) return process.env[name];
   const devVars = join(root, ".dev.vars");
   if (!existsSync(devVars)) return undefined;
-  return parseEnv(readFileSync(devVars, "utf8")).DATABASE_URL || undefined;
+  return parseEnv(readFileSync(devVars, "utf8"))[name] || undefined;
+}
+
+/** `DATABASE_URL` do ambiente ou do `.dev.vars`. Sem ela, o dev usa o PGlite local. */
+export function readDatabaseUrl(): string | undefined {
+  return readDevVar("DATABASE_URL");
 }
 
 /** URL TCP do PGlite se um `pnpm dev` estiver rodando (para o drizzle-kit). */

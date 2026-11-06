@@ -1,10 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { signUpViaApi, test } from "./helpers";
 
 /**
  * CRUD de projetos no browser, contra o build de produção e um banco real
- * (PGlite em memória no `vite preview`). Nomes únicos: o teste não depende do
- * que já existe no banco.
+ * (PGlite em memória no `vite preview`). Cada teste usa um usuário novo, então
+ * não depende do que já existe no banco.
  */
+test.beforeEach(async ({ page, baseURL }) => {
+  await signUpViaApi(page, baseURL);
+});
+
 test("cria, edita e apaga um projeto", async ({ page }) => {
   const suffix = Date.now().toString(36);
   const name = `Projeto e2e ${suffix}`;

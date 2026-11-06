@@ -1,34 +1,39 @@
 import { type Project, projectSchema } from "@shared/projects";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { projects } from "../db/schema";
+import { signUp, type TestUser } from "../test/auth";
 import { createTestDb, type TestDb, testEnv } from "../test/db";
 
 let testDb: TestDb;
+/** Usuário logado nos requests (o padrão de `request`). */
+let alice: TestUser;
 
 beforeAll(async () => {
   testDb = await createTestDb();
 });
-beforeEach(() => testDb.reset());
+beforeEach(async () => {
+  await testDb.reset();
+  alice = await signUp(testDb.app, { name: "Alice", email: "alice@exemplo.com" });
+});
 afterAll(() => testDb.close());
 
 const MISSING_ID = "00000000-0000-4000-8000-000000000000";
 
-function request(path: string, init: RequestInit & { json?: unknown } = {}) {
-  const { json, ...rest } = init;
+/** Request em /api/projects como `as` (padrão: alice; `null` = sem login). */
+function request(path: string, init: RequestInit & { json?: unknown; as?: TestUser | null } = {}) {
+  const { json, as = alice, ...rest } = init;
+  const headers = new Headers(rest.headers);
+  if (as) headers.set("Cookie", as.cookie);
+  if (json !== undefined) headers.set("Content-Type", "application/json");
   return testDb.app.request(
     `/api/projects${path}`,
-    json === undefined
-      ? rest
-      : {
-          ...rest,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(json),
-        },
+    { ...rest, headers, body: json === undefined ? rest.body : JSON.stringify(json) },
     testEnv,
   );
 }
 
-async function createProject(json: unknown): Promise<Project> {
-  const res = await request("", { method: "POST", json });
+async function createProject(json: unknown, as: TestUser = alice): Promise<Project> {
+  const res = await request("", { method: "POST", json, as });
   expect(res.status).toBe(201);
   return projectSchema.parse(await res.json());
 }
@@ -158,5 +163,110 @@ describe("DELETE /api/projects/:id", () => {
     const res = await request(`/${MISSING_ID}`, { method: "DELETE" });
 
     expect(res.status).toBe(404);
+  });
+});
+
+describe("autenticação", () => {
+  it.each([
+    ["GET", ""],
+    ["POST", ""],
+    ["GET", `/${MISSING_ID}`],
+    ["PATCH", `/${MISSING_ID}`],
+    ["DELETE", `/${MISSING_ID}`],
+  ])("responde 401 sem login (%s /api/projects%s)", async (method, path) => {
+    const json = method === "POST" || method === "PATCH" ? { name: "X" } : undefined;
+    const res = await request(path, { method, json, as: null });
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Faça login para continuar." });
+  });
+
+  it("responde 401 com sessão inválida", async () => {
+    const res = await request("", {
+      as: { ...alice, cookie: "better-auth.session_token=forjado" },
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("responde 401 depois do logout", async () => {
+    await testDb.app.request(
+      "/api/auth/sign-out",
+      { method: "POST", headers: { Cookie: alice.cookie, Origin: "http://localhost" } },
+      testEnv,
+    );
+
+    expect((await request("")).status).toBe(401);
+  });
+});
+
+describe("autorização: cada usuário só vê os próprios projetos", () => {
+  let bob: TestUser;
+  let alicesProject: Project;
+
+  beforeEach(async () => {
+    bob = await signUp(testDb.app, { name: "Bob", email: "bob@exemplo.com" });
+    alicesProject = await createProject({ name: "Da Alice" });
+  });
+
+  it("a lista só traz os projetos do usuário logado", async () => {
+    const bobsProject = await createProject({ name: "Do Bob" }, bob);
+
+    const asAlice = projectSchema.array().parse(await (await request("")).json());
+    const asBob = projectSchema.array().parse(await (await request("", { as: bob })).json());
+
+    expect(asAlice.map((project) => project.id)).toEqual([alicesProject.id]);
+    expect(asBob.map((project) => project.id)).toEqual([bobsProject.id]);
+  });
+
+  it("não abre o projeto de outro usuário (404)", async () => {
+    const res = await request(`/${alicesProject.id}`, { as: bob });
+
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Projeto não encontrado." });
+  });
+
+  it("não edita o projeto de outro usuário (404) e nada muda", async () => {
+    const res = await request(`/${alicesProject.id}`, {
+      method: "PATCH",
+      json: { name: "Invadido" },
+      as: bob,
+    });
+
+    expect(res.status).toBe(404);
+    expect(await (await request(`/${alicesProject.id}`)).json()).toEqual(alicesProject);
+  });
+
+  it("não apaga o projeto de outro usuário (404) e ele continua lá", async () => {
+    const res = await request(`/${alicesProject.id}`, { method: "DELETE", as: bob });
+
+    expect(res.status).toBe(404);
+    expect((await request(`/${alicesProject.id}`)).status).toBe(200);
+  });
+
+  it("projetos sem dono (criados antes da autenticação) não aparecem para ninguém", async () => {
+    const [orphan] = await testDb.db
+      .insert(projects)
+      .values({ name: "Sem dono", userId: null })
+      .returning();
+    if (!orphan) throw new Error("insert falhou");
+
+    const list = projectSchema.array().parse(await (await request("")).json());
+    expect(list.map((project) => project.id)).toEqual([alicesProject.id]);
+    expect((await request(`/${orphan.id}`)).status).toBe(404);
+    expect((await request(`/${orphan.id}`, { method: "DELETE" })).status).toBe(404);
+    expect(await testDb.db.query.projects.findMany()).toHaveLength(2);
+  });
+
+  it("ignora um userId enviado no corpo: o dono é sempre quem está logado", async () => {
+    const res = await request("", {
+      method: "POST",
+      json: { name: "Tentativa", userId: alice.id },
+      as: bob,
+    });
+    const created = projectSchema.parse(await res.json());
+
+    expect((await request(`/${created.id}`, { as: bob })).status).toBe(200);
+    expect((await request(`/${created.id}`)).status).toBe(404);
   });
 });

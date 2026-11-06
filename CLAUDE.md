@@ -12,6 +12,10 @@ Este arquivo é o guia para agents e pessoas que trabalham no repo.
 - **Banco** (`worker/db/`): Postgres com Drizzle ORM. Produção: Neon via
   `@neondatabase/serverless` (WebSocket), uma conexão por request. Dev: PGlite local (Postgres em
   WASM), sem conta em lugar nenhum. Migrations em `drizzle/`, geradas pelo drizzle-kit.
+- **Auth** (`worker/auth.ts`): [Better Auth](https://www.better-auth.com) com adapter Drizzle no
+  mesmo Postgres, endpoints em `/api/auth/*` e sessão por cookie. Email + senha sempre ligado;
+  GitHub e Google ligam sozinhos quando as envs existem. Middleware `requireUser` na API; no front,
+  cliente do Better Auth + TanStack Query e rotas protegidas no TanStack Router.
 - **Compartilhado** (`shared/`): schemas zod usados pelo Worker (validação) e pelo front (tipos).
 - **Cliente tipado**: Hono RPC (`hc<AppType>`) em `src/lib/api.ts`. Os tipos da resposta vêm da
   própria rota, sem codegen.
@@ -49,28 +53,35 @@ src/                      Front (SPA)
   main.tsx                Bootstrap: QueryClient + Router
   router.tsx              createRouter + registro de tipos
   routes/                 Rotas por arquivo (TanStack Router). __root.tsx = layout
+    _authenticated.tsx    Guard: tudo em _authenticated/ exige login (→ /login?redirect=…)
+    login, signup, logout Páginas de entrar, criar conta e sair
   routeTree.gen.ts        GERADO pelo plugin do router (commitado; não editar)
   features/<feature>/     Código de uma feature: api.ts (queryOptions), componentes, testes
   components/ui/          Componentes shadcn/ui (copiados, podem ser editados)
   components/layout/      Header, navegação
   components/states.tsx   LoadingState / ErrorState / EmptyState
   lib/api.ts              Cliente Hono RPC + getErrorMessage
+  lib/auth-client.ts      Cliente do Better Auth (use via features/auth/api.ts)
   lib/query-client.ts     QueryClient com toasts de erro globais
   test/                   Setup e helpers do Vitest (renderWithProviders, renderRoute, mockFetch)
 worker/                   API (Cloudflare Worker)
   index.ts                createApp() (basePath /api), monta as rotas, exporta AppType
-  types.ts                AppEnv: Bindings (Env) + Variables (db, connectDb) do Hono
+  types.ts                AppEnv: Bindings (Env) + Variables (db, user, session…) do Hono
+  auth.ts                 Config do Better Auth (createAuth), getAuth(c) e requireUser
+  email.ts                sendEmail(): ponto para plugar um provedor de email
   routes/<nome>.ts        Um sub-app Hono por recurso (+ <nome>.test.ts)
+  routes/auth.ts          /api/auth/* → Better Auth (+ GET /api/auth/providers)
   db/schema.ts            Tabelas do Drizzle (fonte das migrations)
   db/client.ts            Conexão Neon por request (connectNeon) + tipo Database
   db/middleware.ts        withDb (abre/fecha a conexão em c.var.db) e connectFromEnv
   test/db.ts              createTestDb(): PGlite em memória + migrations + app de teste
+  test/auth.ts            signUp(app): cria usuário e devolve o cookie da sessão
   env.d.ts, runtime.d.ts  GERADOS por `pnpm cf-typegen` (tipos de Env e do runtime)
 drizzle/                  Migrations SQL + meta/ (GERADAS por `pnpm db:generate`; commitadas)
 drizzle.config.ts         Config do drizzle-kit (escolhe o banco, ver "Banco de dados")
 scripts/local-db.ts       PGlite local do dev (servidor TCP + proxy WebSocket para o Worker)
 shared/                   Schemas zod e tipos compartilhados front ↔ API
-e2e/                      Playwright (smoke + CRUD de projetos)
+e2e/                      Playwright (smoke, auth, CRUD de projetos)
 ```
 
 ## Convenções
@@ -86,6 +97,9 @@ e2e/                      Playwright (smoke + CRUD de projetos)
   `worker/routes/projects.ts`). Assim o cliente RPC também fica tipado na entrada.
 - **Banco nas rotas**: `.use(withDb)` no sub-app e `c.var.db` nos handlers (Drizzle). Nunca crie
   conexão em escopo de módulo: no Worker a conexão é por request (o `withDb` fecha no fim).
+- **Rotas que exigem login**: `.use(withDb, requireUser)` e `c.var.user` nos handlers. Dados de
+  usuário têm coluna `userId` e **toda** query filtra por `c.var.user.id` (inclusive update/delete);
+  recurso de outro usuário responde 404, como se não existisse. Veja "Autenticação" abaixo.
 - **Erros da API**: responda `{ error: string }` com o status HTTP certo (ou lance
   `HTTPException`). O front mostra `error` no toast/estado de erro via `getErrorMessage`.
 - **Dados no front**: sempre TanStack Query. Defina `queryOptions` em `features/<x>/api.ts` e
@@ -93,15 +107,23 @@ e2e/                      Playwright (smoke + CRUD de projetos)
   automaticamente (desligue com `meta: { silent: true }`).
 - **Estados de tela**: toda tela que carrega dados cobre carregando (`LoadingState`), erro
   (`ErrorState` com `onRetry`) e vazio (`EmptyState`).
+- **Telas que exigem login**: crie o arquivo dentro de `src/routes/_authenticated/` (a URL não
+  muda: `_authenticated/projects/index.tsx` é `/projects`; o id da rota é
+  `/_authenticated/projects/`). Quem está logado: `useQuery(sessionQueryOptions())`.
 - **UI**: componentes shadcn/ui em `src/components/ui` (adicione com
   `pnpm dlx shadcn@latest add <componente>`). Confira o resultado: o CLI às vezes escreve
   `import { cn } from "cn"` e adiciona o pacote `cn` — troque por `@/lib/utils`, rode
   `pnpm remove cn` e `pnpm format`. Estilo com classes Tailwind; `cn()` para combinar.
 - **Variáveis de ambiente do Worker**: não secretas em `wrangler.jsonc → vars`; secretas em
   `.dev.vars` (local) e no Cloudflare (produção, listadas em `foreman.json → secrets`). Todo
-  secret também vai em `wrangler.jsonc → secrets.required`: é de lá que o `cf-typegen` tira o
-  tipo, e **o wrangler só carrega do `.dev.vars` os secrets declarados ali** (e as `vars`).
-  Depois de mudar bindings/vars/secrets, rode `pnpm cf-typegen` e commite os `.d.ts`.
+  secret **obrigatório** também vai em `wrangler.jsonc → secrets.required`: é de lá que o
+  `cf-typegen` tira o tipo, e **o wrangler só carrega do `.dev.vars` os secrets declarados ali**
+  (e as `vars`). Depois de mudar bindings/vars/secrets, rode `pnpm cf-typegen` e commite os `.d.ts`.
+- **Secrets opcionais** (ex.: OAuth): **não** vão em `secrets.required` (o `wrangler deploy`
+  falha se faltar algum de lá). Declare o tipo em `worker/types.ts` (`interface Env`, campo
+  opcional), adicione o nome em `OPTIONAL_SECRETS` no `vite.config.ts` (é ele que os passa do
+  `.dev.vars` para o Worker no `pnpm dev`) e liste em `foreman.json → secrets` com
+  `"optional": true`.
 - **Textos da UI** em português (pt-BR). Código (nomes) em inglês.
 - **Formatação**: deixe o Biome decidir (`pnpm format`). Não desative regras sem comentário
   explicando o motivo.
@@ -115,23 +137,112 @@ O recurso "projects" é o exemplo completo: siga os mesmos arquivos para um recu
 2. **Contrato** — `shared/projects.ts`: `projectSchema` (resposta), `createProjectSchema` e
    `updateProjectSchema` (entrada, com mensagens em pt-BR) e os tipos inferidos.
 3. **Rota da API** — `worker/routes/projects.ts`:
-   `projectRoutes = new Hono<AppEnv>().use(withDb).get("/", …).post("/", jsonBody(createProjectSchema), …)`.
+   `projectRoutes = new Hono<AppEnv>().use(withDb, requireUser).get("/", …).post("/", jsonBody(createProjectSchema), …)`.
    Converta a linha do banco para o contrato (`toProject`: datas em ISO). Responda 404
    `{ error }` quando não existir. Monte em `createApp()`: `.route("/projects", projectRoutes)`.
 4. **Teste da API** — `worker/routes/projects.test.ts`: `createTestDb()` no `beforeAll`,
-   `reset()` no `beforeEach` e `testDb.app.request("/api/projects", { method: "POST", … }, testEnv)`.
+   `reset()` + `signUp(testDb.app)` no `beforeEach` e
+   `testDb.app.request("/api/projects", { method: "POST", headers: { Cookie: user.cookie }, … }, testEnv)`.
    Roda contra PGlite em memória com as migrations reais. Cubra o caminho feliz e os erros (400/404).
 5. **Cliente** — `src/features/projects/api.ts`: `queryOptions` (lista e detalhe) e hooks de
    mutation (`useMutation` + `invalidateQueries({ queryKey: ["projects"] })`).
-6. **Telas** — `src/routes/projects/index.tsx` (lista), `new.tsx` (criar), `$projectId.tsx`
-   (editar/apagar); componentes em `src/features/projects/`; os três estados
+6. **Telas** — `src/routes/_authenticated/projects/index.tsx` (lista), `new.tsx` (criar),
+   `$projectId.tsx` (editar/apagar); componentes em `src/features/projects/`; os três estados
    (loading/erro/vazio) e o link na navegação (`src/components/layout/app-header.tsx`). O
    `routeTree.gen.ts` é regenerado pelo `pnpm dev`/`pnpm build`.
 7. **Testes do front** — `src/features/projects/projects.test.tsx`: `renderRoute("/projects")`
    renderiza o app inteiro (rotas reais) e um `fetch` falso responde a API. Para componentes
    isolados, `renderWithProviders` + `mockFetch` (veja `src/features/health/`). Fluxo crítico:
    um caso no `e2e/` (veja `e2e/projects.spec.ts`).
-8. `pnpm check` verde (e `pnpm e2e` se mexeu em fluxo coberto).
+   Rotas protegidas: `renderRoute` já entra logado (`makeSession()`); passe
+   `{ session: null }` para testar deslogado. No e2e, `signUpViaApi` (`e2e/helpers.ts`) loga o
+   navegador com um usuário novo.
+8. **Dono** — se o recurso é de um usuário (quase sempre): coluna `userId` com FK para `users`,
+   `.use(withDb, requireUser)` na rota e o filtro por `c.var.user.id` em toda query; nos testes,
+   `signUp(testDb.app)` para ter o cookie e um caso com dois usuários (veja "autorização" em
+   `worker/routes/projects.test.ts`). Telas em `src/routes/_authenticated/`.
+9. `pnpm check` verde (e `pnpm e2e` se mexeu em fluxo coberto).
+
+## Autenticação
+
+### Como funciona
+
+- **Better Auth** (`worker/auth.ts` → `createAuth`) com o adapter Drizzle no mesmo banco. Tabelas
+  `users`, `sessions`, `accounts` (uma por forma de login; a senha fica aqui, com hash scrypt) e
+  `verifications` (mais `rate_limits`, os contadores do rate limit) em `worker/db/schema.ts`. Ids
+  são texto gerado pelo Better Auth.
+- A instância é **por request** (a conexão do banco também é): `getAuth(c)` cria na primeira
+  chamada, depois do `withDb`. Não guarde em escopo de módulo.
+- Endpoints em `/api/auth/*` (`worker/routes/auth.ts`): `sign-up/email`, `sign-in/email`,
+  `sign-out`, `get-session`, `sign-in/social`, `callback/<provider>`… Mais
+  `GET /api/auth/providers` (nosso), que diz ao front quais botões sociais mostrar.
+- **Sessão por cookie** `httpOnly` (`better-auth.session_token`; `__Secure-` em HTTPS), assinado
+  com `BETTER_AUTH_SECRET`. Front e API na mesma origem: o cookie vai sozinho, sem CORS.
+- **`requireUser`** lê a sessão do cookie; sem sessão responde 401 `{ error }`; com sessão expõe
+  `c.var.user` e `c.var.session`.
+- **Front**: `authClient` (`src/lib/auth-client.ts`) embrulhado em TanStack Query em
+  `src/features/auth/api.ts`: `sessionQueryOptions()` é a fonte de verdade (guard e menu leem dela)
+  e `useSignIn`/`useSignUp`/`useSignOut` limpam o cache ao trocar de usuário. Um 401 de qualquer
+  query zera a sessão no cache e o guard manda para `/login?redirect=…` (`safeRedirect` em
+  `shared/auth.ts` só aceita caminhos internos).
+
+### Configuração
+
+| Variável                                                | Onde                        | Obrigatória | Para quê                                           |
+| ------------------------------------------------------- | --------------------------- | ----------- | -------------------------------------------------- |
+| `BETTER_AUTH_SECRET`                                    | secret (`secrets.required`) | produção    | Assina os cookies. Foreman gera (`generate: true`) |
+| `BETTER_AUTH_URL`                                       | `wrangler.jsonc → vars`     | não         | URL pública; vazia = origem do request             |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | secret opcional             | não         | Liga o login com GitHub (precisa dos dois)         |
+| `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | secret opcional             | não         | Liga o login com Google (precisa dos dois)         |
+
+- **Dev/preview/e2e**: sem `BETTER_AUTH_SECRET` no `.dev.vars`, o `vite.config.ts` usa uma chave
+  fixa só de desenvolvimento (nunca vai para o build). Em produção, sem o secret, `/api/auth/*`
+  e as rotas protegidas respondem 503.
+- **OAuth**: callback URL = `<origem>/api/auth/callback/github` (ou `/google`). Um app OAuth por
+  ambiente (localhost e produção têm URLs diferentes). Onde criar: descrições em `foreman.json`
+  e comentários em `.dev.vars.example`. Os nomes levam o prefixo `OAUTH_` porque o Foreman não
+  aceita secrets que começam com `GITHUB_` (reservado do GitHub Actions): **não** declare
+  `GITHUB_*` em `foreman.json`.
+
+### Segurança: vínculo de contas e rate limit
+
+- **Sem vínculo automático por email com conta não verificada** (_account pre-hijacking_): alguém
+  cadastra email + senha com o email da vítima, sem provar que é dele, e espera a vítima entrar com
+  GitHub/Google; se o login social fosse vinculado àquela conta, o atacante seguiria dono dela pela
+  senha. Em `createAuth` (`account.accountLinking`) o vínculo implícito só vale se o email da
+  conta local **já foi verificado** (`requireLocalEmailVerified: true`, sem `trustedProviders`) e,
+  enquanto `REQUIRE_EMAIL_VERIFICATION = false`, fica desligado (`disableImplicitLinking`). Efeito:
+  quem tem conta com senha e tenta entrar com um provedor cujo email é o mesmo recebe
+  `account_not_linked` na volta do OAuth; para usar os dois, entra com a senha e vincula o provedor
+  logado (`authClient.linkSocial`). Ao ligar a verificação de email, o vínculo passa a funcionar para
+  contas verificadas. Não afrouxe essas opções sem rever o risco. Teste do cenário: "login social"
+  em `worker/routes/auth.test.ts`.
+- **Rate limit no banco**: `rateLimit: { enabled: true, storage: "database" }` (tabela
+  `rate_limits`, migration em `drizzle/`). A memória (padrão do Better Auth) é por isolate e não
+  limita nada no Workers, e o Better Auth só liga o limite sozinho com `NODE_ENV=production`, que
+  o Worker não define: por isso é explícito. Padrão: 100 requests/10s por rota e 3/10s em
+  `sign-in`/`sign-up`/`change-*` (429 com `X-Retry-After`). O IP vem de `cf-connecting-ip`
+  (`advanced.ipAddress`): a borda da Cloudflare o sobrescreve, então não dá para forjar. Nos
+  testes, `authRequest` (`worker/test/auth.ts`) usa um IP novo a cada chamada; no e2e, o `test` de
+  `e2e/helpers.ts` faz o mesmo por teste. Quem não passa pela Cloudflare (ex.: `pnpm preview`)
+  aceita o header de qualquer cliente.
+- **Senha**: mínimo de 8 e máximo de 128 caracteres (`PASSWORD_MIN_LENGTH`/`PASSWORD_MAX_LENGTH`
+  em `shared/auth.ts`, aplicados no formulário e no Better Auth).
+
+### Verificação de email
+
+Desligada por padrão (`REQUIRE_EMAIL_VERIFICATION = false` em `worker/auth.ts`), mas o hook já
+está ligado: o Better Auth chama `sendVerificationEmail` → `sendEmail()` em `worker/email.ts`, que
+por enquanto só registra o link no log. Para ativar: implemente `sendEmail` com um provedor
+(Resend, Postmark, SES…; a API key vira um secret novo), mude a constante para `true` e trate o
+erro `EMAIL_NOT_VERIFIED` no login (a mensagem já está em `src/features/auth/api.ts`).
+
+### Mudando o Better Auth
+
+Plugins e opções que adicionam campos/tabelas (2FA, organizações, username…) exigem o mesmo campo
+em `worker/db/schema.ts` (nomes em camelCase no TS, snake_case no banco, tabelas no plural) e uma
+migration (`pnpm db:generate`). Confira os campos esperados na doc do plugin. Teste os fluxos com
+`signUp`/`authRequest` de `worker/test/auth.ts`.
 
 ## Banco de dados
 
@@ -168,6 +279,23 @@ Para onde o drizzle-kit (`db:migrate`, `db:studio`) aponta, em ordem (`drizzle.c
 `.wrangler/pglite/data` direto (com o dev parado). Migrations em produção: rode
 `DATABASE_URL=<url> pnpm db:migrate` (ou no pipeline de deploy) **antes** de publicar o código
 que depende delas, e prefira mudanças compatíveis com a versão anterior (adicionar antes de remover).
+
+### Projetos sem dono (`projects.user_id` nullable)
+
+A migration que introduziu a autenticação **não apaga dados**: `projects.user_id` nasceu
+_nullable_. Projetos criados antes do login ficam com `user_id` nulo; como toda query filtra por
+`user_id` do usuário logado, eles simplesmente não aparecem para ninguém (continuam no banco). Para
+apertar a coluna para `NOT NULL` depois:
+
+1. Decida o destino de cada linha órfã: atribua a um usuário
+   (`UPDATE projects SET user_id = '<id do usuário>' WHERE user_id IS NULL;`) ou apague
+   (`DELETE FROM projects WHERE user_id IS NULL;`). Confira antes com
+   `SELECT count(*) FROM projects WHERE user_id IS NULL;`.
+2. Em `worker/db/schema.ts`, volte a `.notNull()` em `projects.userId` e rode
+   `pnpm db:generate --name projects_user_id_not_null` (gera `ALTER COLUMN ... SET NOT NULL`).
+3. Aplique o passo 1 **antes** da migration nova (no mesmo deploy, ou à mão no banco): com linhas
+   nulas ela falha. Se quiser tudo na migration, adicione o `UPDATE`/`DELETE` no início do SQL
+   gerado, antes de ser aplicada em qualquer banco.
 
 ### Hyperdrive (opcional)
 

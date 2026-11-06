@@ -9,7 +9,7 @@ import { DeleteProjectButton } from "@/features/projects/delete-project-button";
 import { ProjectForm } from "@/features/projects/project-form";
 import { DetailedError, getErrorMessage } from "@/lib/api";
 
-export const Route = createFileRoute("/projects/$projectId")({
+export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   component: EditProjectPage,
 });
 

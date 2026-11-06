@@ -6,7 +6,12 @@ import * as schema from "../db/schema";
 import { createApp } from "../index";
 
 /** Env mínimo para `app.request(path, init, testEnv)`. O banco vem do `connectDb`. */
-export const testEnv = { APP_NAME: "Test App", DATABASE_URL: "" } satisfies Env;
+export const testEnv = {
+  APP_NAME: "Test App",
+  DATABASE_URL: "",
+  BETTER_AUTH_SECRET: "test-secret-com-pelo-menos-32-caracteres!",
+  BETTER_AUTH_URL: "",
+} satisfies Env;
 
 /**
  * Banco PGlite em memória com as migrations de drizzle/ aplicadas: rápido, sem

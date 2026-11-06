@@ -2,5 +2,31 @@
   "template": "web",
   "commands": { "check": "pnpm check" },
   "deploy": { "provider": "cloudflare", "workflow": "deploy.yml", "database": "neon" },
-  "secrets": []
+  "secrets": [
+    {
+      "name": "BETTER_AUTH_SECRET",
+      "generate": true,
+      "description": "Chave que assina os cookies de sessão do Better Auth. Gerada automaticamente (32+ bytes aleatórios); trocá-la desloga todo mundo."
+    },
+    {
+      "name": "OAUTH_GITHUB_CLIENT_ID",
+      "optional": true,
+      "description": "Login com GitHub (opcional; precisa também do OAUTH_GITHUB_CLIENT_SECRET). Crie um OAuth App em https://github.com/settings/developers → OAuth Apps → New OAuth App, com Authorization callback URL = https://<seu-dominio>/api/auth/callback/github. Copie o Client ID."
+    },
+    {
+      "name": "OAUTH_GITHUB_CLIENT_SECRET",
+      "optional": true,
+      "description": "Client secret do OAuth App do GitHub (mesma tela do OAUTH_GITHUB_CLIENT_ID → Generate a new client secret)."
+    },
+    {
+      "name": "OAUTH_GOOGLE_CLIENT_ID",
+      "optional": true,
+      "description": "Login com Google (opcional; precisa também do OAUTH_GOOGLE_CLIENT_SECRET). No Google Cloud Console (https://console.cloud.google.com/apis/credentials) → Create credentials → OAuth client ID → Web application, com Authorized redirect URI = https://<seu-dominio>/api/auth/callback/google (configure antes a OAuth consent screen). Copie o Client ID."
+    },
+    {
+      "name": "OAUTH_GOOGLE_CLIENT_SECRET",
+      "optional": true,
+      "description": "Client secret do OAuth client do Google (mesma tela do OAUTH_GOOGLE_CLIENT_ID)."
+    }
+  ]
 }
