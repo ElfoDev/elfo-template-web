@@ -4,7 +4,10 @@ test("a API responde em /api/health", async ({ request }) => {
   const res = await request.get("/api/health");
 
   expect(res.ok()).toBe(true);
-  expect(await res.json()).toMatchObject({ status: "ok", services: [] });
+  expect(await res.json()).toMatchObject({
+    status: "ok",
+    services: [{ name: "database", status: "ok" }],
+  });
 });
 
 test("a home carrega e mostra o status da API", async ({ page }) => {
@@ -12,8 +15,8 @@ test("a home carrega e mostra o status da API", async ({ page }) => {
 
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Principal" })).toBeVisible();
-  await expect(page.getByText("Operacional")).toBeVisible();
-  await expect(page.getByText("Nenhum serviço conectado")).toBeVisible();
+  await expect(page.getByText("database")).toBeVisible();
+  await expect(page.getByText("Operacional").first()).toBeVisible();
 });
 
 test("a navegação funciona e rotas da SPA abrem direto pela URL", async ({ page }) => {

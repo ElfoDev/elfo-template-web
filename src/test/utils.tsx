@@ -1,9 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createMemoryHistory, RouterProvider } from "@tanstack/react-router";
 import { render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type * as React from "react";
 import { vi } from "vitest";
 import { Toaster } from "@/components/ui/sonner";
+import { createQueryClient } from "@/lib/query-client";
+import { createAppRouter } from "@/router";
 
 /** Renderiza com QueryClient isolado (sem retry) e o Toaster montado. */
 export function renderWithProviders(ui: React.ReactElement) {
@@ -18,6 +21,27 @@ export function renderWithProviders(ui: React.ReactElement) {
       <QueryClientProvider client={queryClient}>
         {ui}
         <Toaster />
+      </QueryClientProvider>,
+    ),
+  };
+}
+
+/**
+ * Renderiza o app inteiro (rotas reais, layout, toasts de erro globais) a partir
+ * de `path`, com histórico em memória. Bom para fluxos que navegam entre telas.
+ */
+export function renderRoute(path: string) {
+  const queryClient = createQueryClient();
+  queryClient.setDefaultOptions({ queries: { retry: false }, mutations: { retry: false } });
+  const router = createAppRouter(queryClient, createMemoryHistory({ initialEntries: [path] }));
+
+  return {
+    user: userEvent.setup(),
+    queryClient,
+    router,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
       </QueryClientProvider>,
     ),
   };

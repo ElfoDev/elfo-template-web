@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
 
 const navItems = [
-  { to: "/", label: "Início" },
-  { to: "/about", label: "Sobre" },
+  { to: "/", label: "Início", exact: true },
+  { to: "/projects", label: "Projetos", exact: false },
+  { to: "/about", label: "Sobre", exact: true },
 ] as const;
 
 export function AppHeader() {
@@ -19,7 +20,7 @@ export function AppHeader() {
               to={item.to}
               className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               activeProps={{ className: "bg-accent text-foreground", "aria-current": "page" }}
-              activeOptions={{ exact: true }}
+              activeOptions={{ exact: item.exact }}
             >
               {item.label}
             </Link>
