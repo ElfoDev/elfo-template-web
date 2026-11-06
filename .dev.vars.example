@@ -8,14 +8,18 @@
 # (lista em foreman.json → "secrets"); variáveis não secretas ficam em
 # wrangler.jsonc → "vars".
 #
-# Depois de adicionar uma variável aqui, declare o tipo rodando `pnpm cf-typegen`
-# (atualiza worker/worker-configuration.d.ts).
+# Secrets novos também precisam ir em wrangler.jsonc → secrets.required (o wrangler
+# só carrega daqui os secrets declarados lá). Depois rode `pnpm cf-typegen`
+# (atualiza worker/env.d.ts).
 
 # Nome exibido no header e retornado por /api/health (sobrescreve o valor de wrangler.jsonc).
 # APP_NAME="Foreman Web (local)"
 
-# A partir do WEB-2 (Neon + Drizzle):
-# DATABASE_URL="postgresql://user:password@host/db?sslmode=require"
+# Banco Postgres (Neon). OPCIONAL no dev: sem ela, o `pnpm dev` sobe um PGlite
+# local em .wrangler/pglite (sem conta em lugar nenhum). Use para apontar o dev
+# para uma branch do Neon (ex.: `dev`) — nunca para o banco de produção.
+# Também é a URL usada por `pnpm db:migrate` / `pnpm db:studio`.
+# DATABASE_URL="postgresql://user:password@ep-exemplo-123456.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
 # A partir do WEB-3 (Better Auth):
 # BETTER_AUTH_SECRET="gere com: openssl rand -base64 32"
