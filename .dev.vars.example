@@ -1,0 +1,22 @@
+# Variáveis e secrets locais do Worker (equivalente ao .env para o wrangler/vite).
+#
+# Como usar:
+#   cp .dev.vars.example .dev.vars
+#
+# O .dev.vars está no .gitignore: NUNCA commite valores reais.
+# Em produção, os secrets são configurados no Cloudflare pelo Foreman
+# (lista em foreman.json → "secrets"); variáveis não secretas ficam em
+# wrangler.jsonc → "vars".
+#
+# Depois de adicionar uma variável aqui, declare o tipo rodando `pnpm cf-typegen`
+# (atualiza worker/worker-configuration.d.ts).
+
+# Nome exibido no header e retornado por /api/health (sobrescreve o valor de wrangler.jsonc).
+# APP_NAME="Foreman Web (local)"
+
+# A partir do WEB-2 (Neon + Drizzle):
+# DATABASE_URL="postgresql://user:password@host/db?sslmode=require"
+
+# A partir do WEB-3 (Better Auth):
+# BETTER_AUTH_SECRET="gere com: openssl rand -base64 32"
+# BETTER_AUTH_URL="http://localhost:5173"

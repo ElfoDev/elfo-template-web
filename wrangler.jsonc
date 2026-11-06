@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "foreman-template-web",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    // A SPA é servida como static assets. Rotas que não existem como arquivo
+    // caem no index.html; /api/* sempre passa primeiro pelo Worker (Hono).
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "APP_NAME": "Foreman Web"
+  }
+}

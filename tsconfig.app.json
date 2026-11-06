@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"]
+  },
+  // O front importa só o *tipo* da API (AppType) de worker/; env.d.ts traz o
+  // tipo Env sem os tipos de runtime do Workers (que conflitam com o DOM).
+  "include": ["src", "shared", "worker/env.d.ts"]
+}
