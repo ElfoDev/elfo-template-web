@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { UserMenu } from "@/features/auth/user-menu";
 
 const navItems = [
   { to: "/", label: "Início", exact: true },
@@ -26,6 +27,9 @@ export function AppHeader() {
             </Link>
           ))}
         </nav>
+        <div className="ml-auto">
+          <UserMenu />
+        </div>
       </div>
     </header>
   );

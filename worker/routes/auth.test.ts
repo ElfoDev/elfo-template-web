@@ -117,6 +117,29 @@ describe("socialProviders", () => {
   });
 });
 
+describe("GET /api/auth/providers", () => {
+  it("lista só email e senha sem OAuth configurado", async () => {
+    const res = await testDb.app.request("/api/auth/providers", {}, testEnv);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ emailAndPassword: true, social: [] });
+  });
+
+  it("inclui os provedores com as envs definidas", async () => {
+    const res = await testDb.app.request(
+      "/api/auth/providers",
+      {},
+      {
+        ...testEnv,
+        GOOGLE_CLIENT_ID: "google-id",
+        GOOGLE_CLIENT_SECRET: "google-secret",
+      },
+    );
+
+    expect(await res.json()).toEqual({ emailAndPassword: true, social: ["google"] });
+  });
+});
+
 describe("configuração", () => {
   it("responde 503 sem BETTER_AUTH_SECRET", async () => {
     const res = await testDb.app.request(

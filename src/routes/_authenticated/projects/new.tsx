@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useCreateProject } from "@/features/projects/api";
 import { ProjectForm } from "@/features/projects/project-form";
 
-export const Route = createFileRoute("/projects/new")({
+export const Route = createFileRoute("/_authenticated/projects/new")({
   component: NewProjectPage,
 });
 

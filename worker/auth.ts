@@ -1,3 +1,4 @@
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, type SocialProvider } from "@shared/auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type { Context } from "hono";
@@ -16,10 +17,10 @@ import type { AppEnv } from "./types";
  */
 const REQUIRE_EMAIL_VERIFICATION = false;
 
-export const PASSWORD_MIN_LENGTH = 8;
-
 /** Provedores OAuth ativos: cada um liga só se as duas envs existirem. */
-export function socialProviders(env: Env) {
+export function socialProviders(
+  env: Env,
+): Partial<Record<SocialProvider, { clientId: string; clientSecret: string }>> {
   return {
     ...(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET
       ? { github: { clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET } }
@@ -53,6 +54,7 @@ export function createAuth({ db, env, baseURL }: { db: Database; env: Env; baseU
     emailAndPassword: {
       enabled: true,
       minPasswordLength: PASSWORD_MIN_LENGTH,
+      maxPasswordLength: PASSWORD_MAX_LENGTH,
       requireEmailVerification: REQUIRE_EMAIL_VERIFICATION,
     },
     emailVerification: {
