@@ -12,12 +12,20 @@
     "run_worker_first": ["/api/*"]
   },
   "vars": {
-    "APP_NAME": "Foreman Web"
+    "APP_NAME": "Foreman Web",
+    // URL pública do app, usada pelo Better Auth (links de email, callbacks do
+    // OAuth). Vazia = a origem de cada request, o que serve para o *.workers.dev
+    // e para o dev. Defina ao usar um domínio próprio (ex.: "https://app.exemplo.com").
+    "BETTER_AUTH_URL": ""
   },
   "secrets": {
     // Connection string do Postgres (Neon). Em dev, vem do .dev.vars ou, sem
     // ela, do PGlite local que o `pnpm dev` sobe (ver vite.config.ts).
-    "required": ["DATABASE_URL"]
+    // BETTER_AUTH_SECRET assina os cookies de sessão (Foreman gera em produção;
+    // no dev/preview, sem ela no .dev.vars, o vite.config.ts usa uma de dev).
+    // Os de OAuth (GITHUB_*, GOOGLE_*) são opcionais e por isso NÃO ficam aqui:
+    // ver worker/types.ts.
+    "required": ["DATABASE_URL", "BETTER_AUTH_SECRET"]
   }
   // Hyperdrive (opcional): pool de conexões na borda, na frente do Neon.
   // Veja "Banco de dados → Hyperdrive" no CLAUDE.md antes de ativar.
