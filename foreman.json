@@ -1,7 +1,13 @@
 {
   "template": "web",
-  "commands": { "check": "pnpm check" },
-  "deploy": { "provider": "cloudflare", "workflow": "deploy.yml", "database": "neon" },
+  "commands": {
+    "check": "pnpm check"
+  },
+  "deploy": {
+    "provider": "cloudflare",
+    "workflow": "deploy.yml",
+    "database": "neon"
+  },
   "secrets": [
     {
       "name": "BETTER_AUTH_SECRET",
@@ -21,7 +27,7 @@
     {
       "name": "OAUTH_GOOGLE_CLIENT_ID",
       "optional": true,
-      "description": "Login com Google (opcional; precisa também do OAUTH_GOOGLE_CLIENT_SECRET). No Google Cloud Console (https://console.cloud.google.com/apis/credentials) → Create credentials → OAuth client ID → Web application, com Authorized redirect URI = https://<seu-dominio>/api/auth/callback/google (configure antes a OAuth consent screen). Copie o Client ID."
+      "description": "Login com Google (opcional; junto com OAUTH_GOOGLE_CLIENT_SECRET). Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application), redirect URI https://<seu-dominio>/api/auth/callback/google. Veja o README."
     },
     {
       "name": "OAUTH_GOOGLE_CLIENT_SECRET",
