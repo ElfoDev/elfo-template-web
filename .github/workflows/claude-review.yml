@@ -34,6 +34,9 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # The workflow's own token: no extra GitHub App to install.
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Foreman agents open most PRs here (as foreman-agents[bot], or foreman-preview[bot] from staging/previews).
+          # The action skips bot-initiated runs unless the bot is listed.
+          allowed_bots: "foreman-agents,foreman-preview"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
