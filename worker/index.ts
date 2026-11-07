@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { connectFromEnv } from "./db/middleware";
 import { authRoutes } from "./routes/auth";
+import { easterEggRoutes } from "./routes/easter-egg";
 import { healthRoutes } from "./routes/health";
 import { projectRoutes } from "./routes/projects";
 import type { AppEnv, ConnectDb } from "./types";
@@ -24,6 +25,7 @@ export function createApp({ connectDb = connectFromEnv }: AppOptions = {}) {
       await next();
     })
     .route("/auth", authRoutes)
+    .route("/easter-egg", easterEggRoutes)
     .route("/health", healthRoutes)
     .route("/projects", projectRoutes);
 

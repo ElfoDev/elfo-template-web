@@ -19,6 +19,20 @@ test("a home carrega e mostra o status da API", async ({ page }) => {
   await expect(page.getByText("Operacional").first()).toBeVisible();
 });
 
+test("a home mostra o Easter egg com a mensagem vinda da API", async ({ page, request }) => {
+  const res = await request.get("/api/easter-egg");
+  expect(res.ok()).toBe(true);
+  const { message } = await res.json();
+  expect(message).toEqual(expect.any(String));
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "🥚 Easter egg encontrado!" }),
+  ).toBeVisible();
+  await expect(page.getByTestId("easter-egg-message")).toHaveText(message);
+});
+
 test("a navegação funciona e rotas da SPA abrem direto pela URL", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Sobre" }).click();
