@@ -325,7 +325,8 @@ queries ou a latência até o Neon pesa. Para ativar:
 
 ## Deploy
 
-Cloudflare Workers + Neon, por `.github/workflows/deploy.yml` (passos em `.github/scripts/`).
+Cloudflare Workers + Neon, por `.github/workflows/deploy.yml` (produção e staging) e
+`.github/workflows/preview.yml` (um preview por PR); os passos ficam em `.github/scripts/`.
 
 - **Branches**: `production` publica produção (environment `production`, Worker `<nome>`, branch
   padrão do Neon). `staging`, se existir, publica staging (environment `staging`, Worker
@@ -336,14 +337,28 @@ Cloudflare Workers + Neon, por `.github/workflows/deploy.yml` (passos em `.githu
   (`pnpm db:migrate` na conexão direta) → `wrangler deploy --secrets-file` (código e secrets na
   mesma versão) → smoke test (`/`, `/api/health` com o banco `ok`, e um login inválido em
   `/api/auth/sign-in/email` que precisa dar 401). Um deploy por ambiente de cada vez.
+- **Previews de PR** (`preview.yml`, PRs para `production` ou `staging`, só do próprio
+  repositório e não do Dependabot): environment `preview-pr-<n>` (o Elfo lê esse nome para
+  mostrar o preview no card: não mude), Worker `<nome>-pr-<n>` só em workers.dev, branch
+  `preview/pr-<n>` do Neon criada no primeiro deploy do PR como cópia da branch `staging` do Neon
+  (ou da padrão). Cada push: build (o `pnpm check` fica com o CI) → migrations do PR na branch do
+  preview → deploy → comentário fixo no PR com a URL → smoke test. Um push novo cancela o deploy
+  em andamento. Fechar ou mergear o PR apaga o Worker e a branch (`delete-preview.sh`, que recusa
+  qualquer outro nome, a branch padrão e as protegidas). Sem os secrets da Cloudflare ou do Neon,
+  o preview é pulado (o check passa) e o PR recebe um comentário dizendo o que conectar no Elfo.
+  Custo: um Worker e uma branch do Neon por PR aberto; o plano do Neon limita o número de
+  branches. Uma migration já aplicada no preview não roda de novo se for regenerada no mesmo PR:
+  apague a branch `preview/pr-<n>` no Neon e faça um push para recriá-la.
 - **Secrets** (gravados pelo Elfo no repositório): `CLOUDFLARE_API_TOKEN`,
   `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL` + `DATABASE_URL_POOLED` (produção: direta para
-  migrations, com pooling para o app), `NEON_API_KEY` + `NEON_PROJECT_ID` (staging) e os do app.
+  migrations, com pooling para o app), `NEON_API_KEY` + `NEON_PROJECT_ID` (staging e previews) e
+  os do app.
   O Worker recebe os de `foreman.json → secrets` que existirem no repositório e a `DATABASE_URL`
   com pooling do ambiente. Secret novo do app: declare em `foreman.json → secrets` (nunca
-  `CLOUDFLARE_*`, `NEON_*`, `DATABASE_URL*` nem `GITHUB_*`) e passe pelo nome em `deploy.yml`, nos
-  passos "Verificar secrets" e "Secrets do Worker" (`NOME: ${{ secrets.NOME }}`). Nunca entregue todos
-  os secrets de uma vez a um script: o GitHub segura esse run em repositórios públicos.
+  `CLOUDFLARE_*`, `NEON_*`, `DATABASE_URL*` nem `GITHUB_*`) e passe pelo nome em `deploy.yml` e em
+  `preview.yml`, nos passos "Verificar secrets" e "Secrets do Worker"
+  (`NOME: ${{ secrets.NOME }}`). Nunca entregue todos os secrets de uma vez a um script: o GitHub
+  segura esse run em repositórios públicos.
   Secrets do environment do GitHub (`staging` ou `production`) sobrepõem os do repositório com o
   mesmo nome: use para um `BETTER_AUTH_SECRET` ou um app OAuth só do staging.
 - **Dados do staging**: a branch `staging` do Neon nasce como cópia da padrão (schema, histórico
