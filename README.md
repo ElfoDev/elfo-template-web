@@ -39,4 +39,49 @@ pnpm db:migrate     # aplica migrations (PGlite local ou DATABASE_URL)
 pnpm db:studio      # Drizzle Studio
 ```
 
+## Deploy
+
+Cloudflare Workers (front e API no mesmo Worker) com Postgres no Neon. Pelo Elfo não tem passo
+manual:
+
+1. No board do projeto no [Elfo](https://elfo.dev), abra **Settings → Deploy** e conecte a
+   Cloudflare e o Neon. O Elfo grava os secrets do GitHub Actions (Cloudflare, Neon e
+   `BETTER_AUTH_SECRET`) e **dispara o primeiro deploy sozinho**.
+2. O app sobe em `https://<repositório>.<sua-conta>.workers.dev`, com login funcionando (o
+   Better Auth usa a URL de cada request, não precisa configurar `BETTER_AUTH_URL`). A URL
+   aparece no board e no resumo do workflow **Deploy**.
+
+Daí em diante, todo merge publica (`.github/workflows/deploy.yml`): `pnpm check` → build →
+migrations → `wrangler deploy` com os secrets → smoke test (página, `/api/health` com o banco e o
+login).
+
+| Branch               | Ambiente     | Worker                  | Banco (Neon)                                            |
+| -------------------- | ------------ | ----------------------- | ------------------------------------------------------- |
+| `production`         | `production` | `<repositório>`         | branch padrão do projeto                                |
+| `staging` (opcional) | `staging`    | `<repositório>-staging` | branch `staging`, criada no 1º deploy (cópia da padrão) |
+
+- **Staging** é opcional: marque "Staging" ao criar o board no Elfo (ele cria a branch `staging`
+  e os agents abrem PRs para ela). Ir para produção = um PR de `staging` (ou só do card) para
+  `production`. Sem a branch `staging`, só existe produção.
+- **Nome do Worker**: o do repositório, ou a variável `CLOUDFLARE_WORKER_NAME` (Settings →
+  Secrets and variables → Actions → Variables).
+- **Secrets do app**: os listados em `foreman.json → secrets` vão para o Worker a cada deploy
+  (os opcionais, como o OAuth, só se estiverem gravados no repositório). Um secret do environment
+  `staging` no GitHub (Settings → Environments) vale só para o staging.
+- **Banco do staging**: a branch `staging` do Neon nasce como cópia da produção (inclusive os
+  usuários). Para recomeçar, apague a branch no Neon; o próximo deploy cria outra.
+
+### Domínio próprio
+
+1. O domínio precisa estar na mesma conta da Cloudflare.
+2. Em `wrangler.jsonc`, descomente `routes` com o seu domínio:
+   `"routes": [{ "pattern": "app.minhaempresa.com.br", "custom_domain": true }]`, e faça o merge
+   em `production`. O staging ignora `routes` e continua no workers.dev.
+3. Login: nada a fazer (cada domínio usa a própria origem). Para GitHub/Google, cadastre o callback
+   `https://<domínio>/api/auth/callback/<github|google>` no app OAuth.
+
+Se o deploy falhar por permissão no domínio, o token da Cloudflare precisa de acesso à zona
+(Zone → Workers Routes: Edit). Alternativa: adicione o domínio no painel (Workers & Pages →
+o Worker → Settings → Domains & Routes); o deploy não remove domínios adicionados por lá.
+
 Estrutura, convenções e o passo a passo para adicionar uma feature estão no [CLAUDE.md](./CLAUDE.md).

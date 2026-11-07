@@ -45,8 +45,11 @@ export function socialProviders(
  * Better Auth com o banco do request. No Worker a conexão é por request (ver
  * `withDb`), então a instância também é: não guarde em escopo de módulo.
  *
- * `baseURL`: `BETTER_AUTH_URL` se definida; senão, a origem do próprio request
- * (serve para dev, preview e o domínio *.workers.dev sem configurar nada).
+ * `baseURL`: `BETTER_AUTH_URL` se definida; senão, a origem do próprio request.
+ * Assim o primeiro deploy funciona no *.workers.dev, no staging e num domínio
+ * próprio sem configurar nada. A origem do request é sempre confiável (POSTs
+ * vindos da mesma URL), mesmo com `BETTER_AUTH_URL` apontando para outro domínio:
+ * no Worker ela é o host que a Cloudflare roteou para cá, não dá para forjar.
  */
 export function createAuth({ db, env, baseURL }: { db: Database; env: Env; baseURL: string }) {
   if (!env.BETTER_AUTH_SECRET) {
@@ -58,6 +61,7 @@ export function createAuth({ db, env, baseURL }: { db: Database; env: Env; baseU
   return betterAuth({
     appName: env.APP_NAME,
     baseURL: env.BETTER_AUTH_URL || baseURL,
+    trustedOrigins: [baseURL],
     basePath: "/api/auth",
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, { provider: "pg", schema, usePlural: true }),

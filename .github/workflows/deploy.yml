@@ -1,0 +1,143 @@
+# Publica o app na Cloudflare (Workers) com o banco no Neon:
+#   push em `production` → ambiente `production` (Worker <nome>, branch padrão do Neon);
+#   push em `staging`    → ambiente `staging` (Worker <nome>-staging, branch `staging` do Neon).
+# A branch `staging` é opcional: sem ela, só existe produção. Também roda à mão (Run workflow)
+# nessas duas branches; o Elfo dispara o primeiro deploy sozinho ao conectar a Cloudflare.
+#
+# Secrets (o Elfo grava ao conectar Cloudflare e Neon no board, em Settings → Deploy):
+#   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID; DATABASE_URL e DATABASE_URL_POOLED (produção);
+#   NEON_API_KEY e NEON_PROJECT_ID (staging); e os do app listados em foreman.json → secrets.
+# Nome do Worker: variável CLOUDFLARE_WORKER_NAME, senão o nome do repositório.
+name: Deploy
+
+on:
+  push:
+    branches: [production, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Um deploy por ambiente de cada vez; o próximo espera o atual terminar (nunca cancela no meio
+# de uma migration ou de um upload).
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/production' || github.ref == 'refs/heads/staging'
+    name: Deploy (${{ github.ref_name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # O Elfo lê os deployments destes dois environments (`production` e `staging`) para mostrar
+    # as URLs no board: os nomes têm que ser exatamente estes.
+    environment:
+      name: ${{ github.ref_name }}
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      ENVIRONMENT: ${{ github.ref_name }}
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # No próprio repositório-template (sem Cloudflare) a falta dos secrets só pula o deploy;
+      # nos repositórios criados a partir dele, falha dizendo o que conectar no Elfo.
+      - name: Verificar secrets
+        id: secrets
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          SKIP_IF_MISSING: ${{ github.event.repository.is_template }}
+        run: .github/scripts/require-deploy-secrets.sh "$ENVIRONMENT"
+
+      - name: Nome do Worker
+        if: steps.secrets.outputs.ready == 'true'
+        id: worker
+        env:
+          CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          suffix=""
+          [ "$ENVIRONMENT" = "production" ] || suffix="-$ENVIRONMENT"
+          echo "name=$(.github/scripts/worker-name.sh "$REPO_NAME" "$suffix")" >>"$GITHUB_OUTPUT"
+
+      # Versão do pnpm vem de "packageManager" no package.json.
+      - uses: pnpm/action-setup@v6
+        if: steps.secrets.outputs.ready == 'true'
+
+      - uses: actions/setup-node@v7
+        if: steps.secrets.outputs.ready == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        if: steps.secrets.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Check (lint + typecheck + test)
+        if: steps.secrets.outputs.ready == 'true'
+        run: pnpm check
+
+      - name: Build
+        if: steps.secrets.outputs.ready == 'true'
+        run: pnpm build
+
+      # Produção: a branch padrão do Neon (DATABASE_URL). Staging: a branch `staging` do Neon,
+      # criada pela API na primeira vez. As connection strings vão para arquivos, nunca para o log.
+      - name: Banco (Neon)
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_POOLED: ${{ secrets.DATABASE_URL_POOLED }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: .github/scripts/database-urls.sh "$ENVIRONMENT" "$RUNNER_TEMP/elfo-db"
+
+      # Antes do deploy: o código novo nunca roda contra um schema velho. Migrations precisam
+      # ser compatíveis com a versão anterior (ver "Como mudar o schema" no CLAUDE.md).
+      - name: Migrations
+        if: steps.secrets.outputs.ready == 'true'
+        run: DATABASE_URL="$(cat "$RUNNER_TEMP/elfo-db/direct-url")" pnpm db:migrate
+
+      - name: Secrets do Worker
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: .github/scripts/worker-secrets.sh "$RUNNER_TEMP/elfo-db" "$RUNNER_TEMP/worker-secrets.json"
+
+      # `wrangler deploy --secrets-file`: código e secrets na mesma versão do Worker.
+      - name: Deploy (wrangler)
+        if: steps.secrets.outputs.ready == 'true'
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WORKER_NAME: ${{ steps.worker.outputs.name }}
+        run: .github/scripts/deploy-worker.sh "$WORKER_NAME" "$ENVIRONMENT" "$RUNNER_TEMP/worker-secrets.json"
+
+      - name: Apagar arquivos com secrets
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/elfo-db" "$RUNNER_TEMP/worker-secrets.json"
+
+      - name: Smoke test (página, /api/health com banco, Better Auth)
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          URL: ${{ steps.deploy.outputs.workers_dev_url || steps.deploy.outputs.url }}
+        run: .github/scripts/smoke-test.sh "$URL"
+
+  # Só `production` e `staging` têm ambiente. Um "Run workflow" em outra branch falha aqui.
+  wrong-branch:
+    if: github.ref != 'refs/heads/production' && github.ref != 'refs/heads/staging'
+    name: Deploy (branch sem ambiente)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Recusar
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          echo "::error title=Branch sem ambiente::'$REF' não publica: só 'production' (produção) e 'staging' (staging) têm deploy. Rode o workflow numa dessas branches."
+          exit 1

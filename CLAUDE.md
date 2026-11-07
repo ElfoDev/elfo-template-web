@@ -82,6 +82,8 @@ drizzle.config.ts         Config do drizzle-kit (escolhe o banco, ver "Banco de 
 scripts/local-db.ts       PGlite local do dev (servidor TCP + proxy WebSocket para o Worker)
 shared/                   Schemas zod e tipos compartilhados front ↔ API
 e2e/                      Playwright (smoke, auth, CRUD de projetos)
+.github/workflows/        ci.yml (PRs e pushes), deploy.yml (production/staging), foreman.yml (Elfo)
+.github/scripts/          Passos do deploy: secrets, nome do Worker, Neon, wrangler, smoke test
 ```
 
 ## Convenções
@@ -115,7 +117,8 @@ e2e/                      Playwright (smoke, auth, CRUD de projetos)
   `import { cn } from "cn"` e adiciona o pacote `cn` — troque por `@/lib/utils`, rode
   `pnpm remove cn` e `pnpm format`. Estilo com classes Tailwind; `cn()` para combinar.
 - **Variáveis de ambiente do Worker**: não secretas em `wrangler.jsonc → vars`; secretas em
-  `.dev.vars` (local) e no Cloudflare (produção, listadas em `foreman.json → secrets`). Todo
+  `.dev.vars` (local) e nos secrets do GitHub Actions, que o deploy grava no Worker (as listadas
+  em `foreman.json → secrets`, mais a `DATABASE_URL`; ver "Deploy"). Todo
   secret **obrigatório** também vai em `wrangler.jsonc → secrets.required`: é de lá que o
   `cf-typegen` tira o tipo, e **o wrangler só carrega do `.dev.vars` os secrets declarados ali**
   (e as `vars`). Depois de mudar bindings/vars/secrets, rode `pnpm cf-typegen` e commite os `.d.ts`.
@@ -188,13 +191,18 @@ O recurso "projects" é o exemplo completo: siga os mesmos arquivos para um recu
 
 ### Configuração
 
-| Variável                                                | Onde                        | Obrigatória | Para quê                                           |
-| ------------------------------------------------------- | --------------------------- | ----------- | -------------------------------------------------- |
+| Variável                                                | Onde                        | Obrigatória | Para quê                                        |
+| ------------------------------------------------------- | --------------------------- | ----------- | ----------------------------------------------- |
 | `BETTER_AUTH_SECRET`                                    | secret (`secrets.required`) | produção    | Assina os cookies. Elfo gera (`generate: true`) |
-| `BETTER_AUTH_URL`                                       | `wrangler.jsonc → vars`     | não         | URL pública; vazia = origem do request             |
-| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | secret opcional             | não         | Liga o login com GitHub (precisa dos dois)         |
-| `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | secret opcional             | não         | Liga o login com Google (precisa dos dois)         |
+| `BETTER_AUTH_URL`                                       | `wrangler.jsonc → vars`     | não         | URL fixa; vazia (padrão) = origem do request    |
+| `OAUTH_GITHUB_CLIENT_ID` / `OAUTH_GITHUB_CLIENT_SECRET` | secret opcional             | não         | Liga o login com GitHub (precisa dos dois)      |
+| `OAUTH_GOOGLE_CLIENT_ID` / `OAUTH_GOOGLE_CLIENT_SECRET` | secret opcional             | não         | Liga o login com Google (precisa dos dois)      |
 
+- **URL do app**: com `BETTER_AUTH_URL` vazia, a URL base do Better Auth é a origem de cada
+  request, e a origem do próprio request é sempre confiável (`trustedOrigins`). Por isso o
+  primeiro deploy funciona no `*.workers.dev`, o staging no `<nome>-staging.*.workers.dev` e um
+  domínio próprio, sem configurar nada. `BETTER_AUTH_URL` vale para production **e** staging:
+  deixe vazia, a não ser que precise de uma URL fixa nos links de email/callbacks.
 - **Dev/preview/e2e**: sem `BETTER_AUTH_SECRET` no `.dev.vars`, o `vite.config.ts` usa uma chave
   fixa só de desenvolvimento (nunca vai para o build). Em produção, sem o secret, `/api/auth/*`
   e as rotas protegidas respondem 503.
@@ -276,9 +284,10 @@ migration (`pnpm db:generate`). Confira os campos esperados na doc do plugin. Te
 
 Para onde o drizzle-kit (`db:migrate`, `db:studio`) aponta, em ordem (`drizzle.config.ts`):
 `DATABASE_URL` do ambiente/`.dev.vars` → o PGlite do `pnpm dev` aberto (via TCP) → o diretório
-`.wrangler/pglite/data` direto (com o dev parado). Migrations em produção: rode
-`DATABASE_URL=<url> pnpm db:migrate` (ou no pipeline de deploy) **antes** de publicar o código
-que depende delas, e prefira mudanças compatíveis com a versão anterior (adicionar antes de remover).
+`.wrangler/pglite/data` direto (com o dev parado). Em production e staging, o deploy roda
+`pnpm db:migrate` na conexão direta **antes** de publicar o Worker novo; se o deploy falhar
+depois disso, o banco fica com o schema novo e o código velho. Por isso as migrations precisam ser
+compatíveis com a versão anterior (adicionar antes de remover; renomear/apagar num PR seguinte).
 
 ### Projetos sem dono (`projects.user_id` nullable)
 
@@ -313,6 +322,37 @@ queries ou a latência até o Neon pesa. Para ativar:
    `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE`) usando a URL TCP mostrada pelo
    `pnpm dev`. A porta é aleatória; fixe com `LOCAL_DB_PORT=5433 pnpm dev`.
 4. Os testes não mudam (usam `createApp({ connectDb })` com PGlite).
+
+## Deploy
+
+Cloudflare Workers + Neon, por `.github/workflows/deploy.yml` (passos em `.github/scripts/`).
+
+- **Branches**: `production` publica produção (environment `production`, Worker `<nome>`, branch
+  padrão do Neon). `staging`, se existir, publica staging (environment `staging`, Worker
+  `<nome>-staging`, branch `staging` do Neon, criada pela API no primeiro deploy a partir da
+  padrão). Com `staging`, abra PRs para `staging`; produção recebe PRs de promoção. Sem ela, PRs
+  vão direto para `production`.
+- **Cada deploy**: confere os secrets → `pnpm check` → `pnpm build` → migrations
+  (`pnpm db:migrate` na conexão direta) → `wrangler deploy --secrets-file` (código e secrets na
+  mesma versão) → smoke test (`/`, `/api/health` com o banco `ok`, e um login inválido em
+  `/api/auth/sign-in/email` que precisa dar 401). Um deploy por ambiente de cada vez.
+- **Secrets** (gravados pelo Elfo no repositório): `CLOUDFLARE_API_TOKEN`,
+  `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL` + `DATABASE_URL_POOLED` (produção: direta para
+  migrations, com pooling para o app), `NEON_API_KEY` + `NEON_PROJECT_ID` (staging) e os do app.
+  O Worker recebe os de `foreman.json → secrets` que existirem no repositório e a `DATABASE_URL`
+  com pooling do ambiente. Secret novo do app: declare em `foreman.json → secrets` (nunca
+  `CLOUDFLARE_*`, `NEON_*`, `DATABASE_URL*` nem `GITHUB_*`), não precisa mexer no workflow.
+  Secrets do environment do GitHub (`staging` ou `production`) sobrepõem os do repositório com o
+  mesmo nome: use para um `BETTER_AUTH_SECRET` ou um app OAuth só do staging.
+- **Dados do staging**: a branch `staging` do Neon nasce como cópia da padrão (schema, histórico
+  de migrations e dados, inclusive usuários e sessões). Para recomeçar, apague a branch no Neon: o
+  próximo deploy de staging cria outra a partir da produção.
+- **`/api/health`** é o que o smoke test usa: se mudar a rota, mantenha `status: "ok"` quando o
+  banco responde, ou ajuste `.github/scripts/smoke-test.sh`.
+- **Domínio próprio**: `routes` em `wrangler.jsonc` (só produção; o deploy de staging tira as
+  `routes`). `workers_dev` fica `true`: o smoke test usa a URL do workers.dev.
+- Nunca imprima connection strings ou secrets nos workflows; as URLs do Neon que não vêm de
+  `secrets` são mascaradas (`::add-mask::`) e ficam em arquivos no `$RUNNER_TEMP`.
 
 ## Regras
 
