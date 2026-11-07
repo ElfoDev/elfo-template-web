@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Monta o arquivo JSON de secrets que o `wrangler deploy --secrets-file` grava no Worker,
 # na mesma versão do deploy (sem janela com o código novo e os secrets velhos):
-#   - cada secret de foreman.json → secrets que existe no repositório (os opcionais vazios
-#     ficam de fora: o Worker mantém o valor que já tinha);
+#   - cada secret de foreman.json → secrets gravado no repositório ou no environment do GitHub
+#     (o do environment tem prioridade); os opcionais vazios ficam de fora e o Worker mantém o
+#     valor que já tinha;
 #   - DATABASE_URL = a connection string com pooling do ambiente (<db-dir>/pooled-url).
 # Nunca entram no Worker: CLOUDFLARE_*, NEON_*, GITHUB_* e as outras DATABASE_URL*.
 #

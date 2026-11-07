@@ -342,6 +342,11 @@ Cloudflare Workers + Neon, por `.github/workflows/deploy.yml` (passos em `.githu
   O Worker recebe os de `foreman.json → secrets` que existirem no repositório e a `DATABASE_URL`
   com pooling do ambiente. Secret novo do app: declare em `foreman.json → secrets` (nunca
   `CLOUDFLARE_*`, `NEON_*`, `DATABASE_URL*` nem `GITHUB_*`), não precisa mexer no workflow.
+  Secrets do environment do GitHub (`staging` ou `production`) sobrepõem os do repositório com o
+  mesmo nome: use para um `BETTER_AUTH_SECRET` ou um app OAuth só do staging.
+- **Dados do staging**: a branch `staging` do Neon nasce como cópia da padrão (schema, histórico
+  de migrations e dados, inclusive usuários e sessões). Para recomeçar, apague a branch no Neon: o
+  próximo deploy de staging cria outra a partir da produção.
 - **`/api/health`** é o que o smoke test usa: se mudar a rota, mantenha `status: "ok"` quando o
   banco responde, ou ajuste `.github/scripts/smoke-test.sh`.
 - **Domínio próprio**: `routes` em `wrangler.jsonc` (só produção; o deploy de staging tira as

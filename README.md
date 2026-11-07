@@ -66,7 +66,10 @@ login).
 - **Nome do Worker**: o do repositório, ou a variável `CLOUDFLARE_WORKER_NAME` (Settings →
   Secrets and variables → Actions → Variables).
 - **Secrets do app**: os listados em `foreman.json → secrets` vão para o Worker a cada deploy
-  (os opcionais, como o OAuth, só se estiverem gravados no repositório).
+  (os opcionais, como o OAuth, só se estiverem gravados no repositório). Um secret do environment
+  `staging` no GitHub (Settings → Environments) vale só para o staging.
+- **Banco do staging**: a branch `staging` do Neon nasce como cópia da produção (inclusive os
+  usuários). Para recomeçar, apague a branch no Neon; o próximo deploy cria outra.
 
 ### Domínio próprio
 

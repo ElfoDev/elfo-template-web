@@ -84,3 +84,20 @@ test("um usuário não vê os projetos de outro", async ({ browser, baseURL }) =
   await a.close();
   await b.close();
 });
+
+/**
+ * Proteção contra CSRF no build de produção (nos testes unitários o Better Auth desliga a
+ * checagem de origin). Mesmo cenário do smoke test do deploy: POST com cookie vindo da
+ * própria URL chega ao login (401, senha errada); vindo de outro site, é recusado (403).
+ */
+test("aceita POST da própria origem e recusa de outro site", async ({ request, baseURL }) => {
+  const origin = new URL(baseURL ?? "http://localhost").origin;
+  const signIn = (from: string) =>
+    request.post("/api/auth/sign-in/email", {
+      data: { email: uniqueEmail("csrf"), password: PASSWORD },
+      headers: { Origin: from, Cookie: "e2e=1", "cf-connecting-ip": randomIp() },
+    });
+
+  expect((await signIn(origin)).status()).toBe(401);
+  expect((await signIn("https://outro-site.example.com")).status()).toBe(403);
+});
