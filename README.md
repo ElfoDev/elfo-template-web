@@ -55,22 +55,36 @@ Daí em diante, todo merge publica (`.github/workflows/deploy.yml`): `pnpm check
 migrations → `wrangler deploy` com os secrets → smoke test (página, `/api/health` com o banco e o
 login).
 
-| Branch               | Ambiente     | Worker                  | Banco (Neon)                                            |
-| -------------------- | ------------ | ----------------------- | ------------------------------------------------------- |
-| `production`         | `production` | `<repositório>`         | branch padrão do projeto                                |
-| `staging` (opcional) | `staging`    | `<repositório>-staging` | branch `staging`, criada no 1º deploy (cópia da padrão) |
+| Branch               | Ambiente         | Worker                  | Banco (Neon)                                                                             |
+| -------------------- | ---------------- | ----------------------- | ---------------------------------------------------------------------------------------- |
+| `production`         | `production`     | `<repositório>`         | branch padrão do projeto                                                                 |
+| `staging` (opcional) | `staging`        | `<repositório>-staging` | branch `staging`, criada no 1º deploy (cópia da padrão)                                  |
+| PR aberto (preview)  | `preview-pr-<n>` | `<repositório>-pr-<n>`  | branch `preview/pr-<n>`, criada no 1º deploy do PR (cópia da `staging`, senão da padrão) |
 
 - **Staging** é opcional: marque "Staging" ao criar o board no Elfo (ele cria a branch `staging`
   e os agents abrem PRs para ela). Ir para produção = um PR de `staging` (ou só do card) para
   `production`. Sem a branch `staging`, só existe produção.
 - **Nome do Worker**: o do repositório, ou a variável `CLOUDFLARE_WORKER_NAME` (Settings →
   Secrets and variables → Actions → Variables).
+- **Preview de cada PR** (`.github/workflows/preview.yml`): todo PR para `production` ou
+  `staging` ganha o próprio app, em `https://<repositório>-pr-<n>.<sua-conta>.workers.dev`, com
+  banco próprio (a branch `preview/pr-<n>` do Neon, com as migrations do PR). A URL aparece num
+  comentário do PR (atualizado a cada push) e no card do Elfo. Fechar ou mergear o PR apaga o
+  Worker e a branch do Neon.
+- **Custo dos previews**: um Worker e uma branch do Neon (com um compute, que suspende sem uso)
+  por PR aberto, apagados quando o PR fecha. O plano do Neon limita quantas branches o projeto
+  pode ter (e as horas de compute): com muitos PRs abertos ao mesmo tempo, o deploy do preview
+  falha dizendo isso; feche PRs antigos ou apague branches `preview/pr-*` que sobraram. Os
+  previews precisam de `NEON_API_KEY` e `NEON_PROJECT_ID` (o Elfo grava ao conectar o Neon); sem
+  eles, o preview é pulado e o PR recebe um comentário dizendo o que conectar. PRs de fork e do
+  Dependabot não têm preview.
 - **Secrets do app**: os listados em `foreman.json → secrets` (e passados pelo nome em
-  `.github/workflows/deploy.yml`) vão para o Worker a cada deploy (os opcionais, como o OAuth, só se
-  estiverem gravados no repositório). Um secret do environment
-  `staging` no GitHub (Settings → Environments) vale só para o staging.
-- **Banco do staging**: a branch `staging` do Neon nasce como cópia da produção (inclusive os
-  usuários). Para recomeçar, apague a branch no Neon; o próximo deploy cria outra.
+  `.github/workflows/deploy.yml` e `preview.yml`) vão para o Worker a cada deploy (os opcionais,
+  como o OAuth, só se estiverem gravados no repositório). Um secret do environment `staging` no
+  GitHub (Settings → Environments) vale só para o staging; os previews usam os do repositório.
+- **Banco do staging e dos previews**: a branch `staging` do Neon nasce como cópia da produção, e
+  a de cada preview como cópia do staging (sem staging, da produção), inclusive os usuários. Para
+  recomeçar, apague a branch no Neon; o próximo deploy (ou push no PR) cria outra.
 
 ### Domínio próprio
 

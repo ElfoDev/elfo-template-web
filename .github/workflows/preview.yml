@@ -1,0 +1,243 @@
+# Preview por PR (para `production` ou `staging`): cada PR ganha o próprio app publicado, com
+# banco próprio, e um comentário com a URL (que o Elfo também mostra no card):
+#   - Worker <nome>-pr-<n> em https://<nome>-pr-<n>.<conta>.workers.dev (sem domínio próprio);
+#   - branch `preview/pr-<n>` do Neon, criada no primeiro deploy do PR como cópia da branch
+#     `staging` do Neon (ou da padrão, sem staging), com as migrations do PR aplicadas.
+# Fechar ou mergear o PR apaga o Worker e a branch do Neon.
+#
+# Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, NEON_API_KEY, NEON_PROJECT_ID e os do app
+# (foreman.json → secrets), gravados pelo Elfo ao conectar a Cloudflare e o Neon no board
+# (Settings → Deploy). Sem eles o preview é pulado (o check passa) e o PR recebe um comentário
+# dizendo o que conectar. PRs de fork e do Dependabot não recebem secrets: não têm preview.
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [production, staging]
+
+permissions:
+  contents: read
+
+# Um run por PR de cada vez. Só um push novo (`synchronize`) cancela o deploy em andamento; abrir,
+# reabrir e fechar esperam o run atual terminar. Assim a remoção não é interrompida no meio (um PR
+# fechado não recebe pushes; se um PR reaberto receber um enquanto a remoção ainda roda, o deploy
+# desse push recria o preview), e um PR fechado durante um deploy tem o preview apagado logo depois.
+concurrency:
+  group: preview-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: ${{ github.event.action == 'synchronize' }}
+
+env:
+  PR_NUMBER: ${{ github.event.pull_request.number }}
+  NEON_BRANCH: preview/pr-${{ github.event.pull_request.number }}
+  WRANGLER_SEND_METRICS: "false"
+
+jobs:
+  # Confere os secrets e calcula o nome do Worker. Sem secrets, comenta no PR o que conectar.
+  check:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.actor != 'dependabot[bot]'
+    name: Preview (secrets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    outputs:
+      ready: ${{ steps.secrets.outputs.ready }}
+      missing: ${{ steps.secrets.outputs.missing }}
+      worker: ${{ steps.worker.outputs.name }}
+    steps:
+      # O commit do PR, não o merge de teste (refs/pull/<n>/merge), que pode não existir mais
+      # quando o PR é fechado.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      # Cada secret pelo nome, nunca todos de uma vez (o GitHub segura esse run em repositórios
+      # públicos). Um secret novo do app entra aqui, em "Secrets do Worker" (abaixo), nos mesmos
+      # passos do deploy.yml e em foreman.json.
+      - name: Verificar secrets
+        id: secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
+          OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+        run: .github/scripts/require-deploy-secrets.sh preview
+
+      # <nome>-pr-<n>, cortando o nome para o total caber nos 63 caracteres.
+      - name: Nome do Worker
+        id: worker
+        env:
+          CLOUDFLARE_WORKER_NAME: ${{ vars.CLOUDFLARE_WORKER_NAME }}
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: |
+          name="$(.github/scripts/worker-name.sh "$REPO_NAME" "-pr-$PR_NUMBER")"
+          echo "name=$name" >>"$GITHUB_OUTPUT"
+
+      - name: Comentar no PR o que falta
+        if: steps.secrets.outputs.ready != 'true' && github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MISSING: ${{ steps.secrets.outputs.missing }}
+          WORKER: ${{ steps.worker.outputs.name }}
+        run: .github/scripts/preview-comment.sh skipped "$MISSING"
+
+  deploy:
+    needs: check
+    if: needs.check.outputs.ready == 'true' && github.event.action != 'closed'
+    name: Preview (deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    # O Elfo lê os deployments deste environment para mostrar o preview no card: o nome tem que
+    # ser exatamente `preview-pr-<n>`.
+    environment:
+      name: preview-pr-${{ github.event.pull_request.number }}
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      ENVIRONMENT: preview-pr-${{ github.event.pull_request.number }}
+      WORKER: ${{ needs.check.outputs.worker }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Versão do pnpm vem de "packageManager" no package.json.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Lint, typecheck e testes já rodam no workflow CI do PR.
+      - name: Build
+        run: pnpm build
+
+      # A branch `preview/pr-<n>` do Neon: criada no primeiro deploy (cópia da `staging` do Neon,
+      # ou da padrão) e reaproveitada nos pushes seguintes. As connection strings vão para arquivos
+      # em $RUNNER_TEMP, mascaradas, nunca para o log.
+      - name: Banco (branch do Neon)
+        id: db
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+          NEON_PARENT_BRANCH: staging
+        run: .github/scripts/database-urls.sh preview "$RUNNER_TEMP/elfo-db"
+
+      - name: Migrations
+        run: DATABASE_URL="$(cat "$RUNNER_TEMP/elfo-db/direct-url")" pnpm db:migrate
+
+      - name: Secrets do Worker
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          OAUTH_GITHUB_CLIENT_ID: ${{ secrets.OAUTH_GITHUB_CLIENT_ID }}
+          OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.OAUTH_GITHUB_CLIENT_SECRET }}
+          OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.OAUTH_GOOGLE_CLIENT_ID }}
+          OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.OAUTH_GOOGLE_CLIENT_SECRET }}
+        run: .github/scripts/worker-secrets.sh "$RUNNER_TEMP/elfo-db" "$RUNNER_TEMP/worker-secrets.json"
+
+      # Um Worker só do PR, em workers.dev: sem as `routes` da produção.
+      - name: Deploy (wrangler)
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: .github/scripts/deploy-worker.sh "$WORKER" "$ENVIRONMENT" "$RUNNER_TEMP/worker-secrets.json"
+
+      - name: Apagar arquivos com secrets
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/elfo-db" "$RUNNER_TEMP/worker-secrets.json"
+
+      - name: Comentar a URL no PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          URL: ${{ steps.deploy.outputs.url }}
+        run: .github/scripts/preview-comment.sh deployed "$URL"
+
+      - name: Smoke test (página, /api/health com banco, Better Auth)
+        env:
+          URL: ${{ steps.deploy.outputs.url }}
+          SMOKE_ATTEMPTS: "24"
+        run: .github/scripts/smoke-test.sh "$URL"
+
+      - name: Dica se o banco falhar
+        if: failure() && steps.db.outcome == 'failure'
+        run: |
+          echo "::error title=Branch do Neon do preview::Não deu para preparar a branch '$NEON_BRANCH' do Neon (o erro da API está no passo 'Banco (branch do Neon)'). Limite de branches do plano: feche PRs antigos (o preview deles é apagado) ou apague no Neon as branches preview/pr-* que sobraram. Erro de autenticação: reconecte o Neon no Elfo (board → Settings → Deploy). Depois, faça um push no PR ou rode o job de novo."
+
+  # PR fechado ou mergeado: apaga o Worker e a branch do Neon. Nada encontrado não é erro.
+  teardown:
+    needs: check
+    if: github.event.action == 'closed'
+    name: Preview (remover)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    env:
+      ENVIRONMENT: preview-pr-${{ github.event.pull_request.number }}
+      WORKER: ${{ needs.check.outputs.worker }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Apagar o Worker e a branch do Neon
+        if: needs.check.outputs.ready == 'true'
+        id: delete
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: .github/scripts/delete-preview.sh "$PR_NUMBER" "$WORKER"
+
+      # O preview sai da lista de deployments ativos do PR.
+      - name: Marcar o environment como inativo
+        if: steps.delete.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ids="$(gh api "repos/$GITHUB_REPOSITORY/deployments?environment=$ENVIRONMENT&per_page=100" --jq '.[].id')" || {
+            echo "::warning::Não deu para listar os deployments de $ENVIRONMENT."
+            exit 0
+          }
+          for id in $ids; do
+            gh api -X POST "repos/$GITHUB_REPOSITORY/deployments/$id/statuses" -f state=inactive >/dev/null ||
+              echo "::warning::Não deu para marcar o deployment $id como inativo."
+          done
+
+      - name: Atualizar o comentário do PR
+        if: steps.delete.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKER_STATE: ${{ steps.delete.outputs.worker }}
+          DATABASE_STATE: ${{ steps.delete.outputs.database }}
+        run: .github/scripts/preview-comment.sh closed
+
+      - name: Avisar no PR o que não foi apagado (sem secrets)
+        if: needs.check.outputs.ready != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MISSING: ${{ needs.check.outputs.missing }}
+        run: .github/scripts/preview-comment.sh closed-missing "$MISSING"

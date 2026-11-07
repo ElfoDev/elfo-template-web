@@ -2,16 +2,18 @@
 # Publica o build (`pnpm build`) como o Worker <nome>, com os secrets do arquivo JSON na mesma
 # versão, e grava as URLs em $GITHUB_OUTPUT (`workers_dev_url`, `url`) e no resumo do job.
 #
-# Staging não herda domínios próprios nem rotas do wrangler.jsonc (são da produção, e dois
-# Workers não podem ter o mesmo domínio): publica só em <nome>.<conta>.workers.dev.
+# Staging e os previews de PR não herdam domínios próprios nem rotas do wrangler.jsonc (são da
+# produção, e dois Workers não podem ter o mesmo domínio): publicam só em
+# <nome>.<conta>.workers.dev.
 #
-# Uso: deploy-worker.sh <nome-do-worker> <production|staging> <secrets.json>
+# Uso: deploy-worker.sh <nome-do-worker> <production|staging|preview-pr-<n>> <secrets.json>
 #   env CLOUDFLARE_API_TOKEN e CLOUDFLARE_ACCOUNT_ID
 set -euo pipefail
 
-name="${1:?uso: deploy-worker.sh <nome-do-worker> <production|staging> <secrets.json>}"
-environment="${2:?uso: deploy-worker.sh <nome-do-worker> <production|staging> <secrets.json>}"
-secrets_file="${3:?uso: deploy-worker.sh <nome-do-worker> <production|staging> <secrets.json>}"
+usage="uso: deploy-worker.sh <nome-do-worker> <production|staging|preview-pr-<n>> <secrets.json>"
+name="${1:?$usage}"
+environment="${2:?$usage}"
+secrets_file="${3:?$usage}"
 output="${GITHUB_OUTPUT:-/dev/null}"
 tmp="${RUNNER_TEMP:-$(mktemp -d)}"
 
@@ -23,9 +25,9 @@ if [ ! -f "$redirect" ]; then
 fi
 config="$(dirname "$redirect")/$(jq -r '.configPath' "$redirect")"
 
-if [ "$environment" = "staging" ]; then
-  jq 'del(.routes, .route) | .workers_dev = true' "$config" >"$tmp/wrangler-staging.json"
-  mv "$tmp/wrangler-staging.json" "$config"
+if [ "$environment" != "production" ]; then
+  jq 'del(.routes, .route) | .workers_dev = true' "$config" >"$tmp/wrangler-workers-dev.json"
+  mv "$tmp/wrangler-workers-dev.json" "$config"
 fi
 
 result="$tmp/wrangler-output.json"
