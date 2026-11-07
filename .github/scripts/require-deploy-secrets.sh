@@ -7,7 +7,9 @@
 # O Elfo grava todos eles ao conectar a Cloudflare (e o Neon) no board.
 #
 # Uso: require-deploy-secrets.sh <production|staging>
-#   env ALL_SECRETS: `toJSON(secrets)` do workflow (nada daqui é impresso);
+#   env: cada secret pelo nome (CLOUDFLARE_*, NEON_*, DATABASE_URL*, os de foreman.json), como o
+#   workflow passa; nada daqui é impresso. (Nunca todos os secrets de uma vez: o GitHub segura em repositórios
+#   públicos os runs que entregam todos os secrets a um script.)
 #   env SKIP_IF_MISSING=true: o próprio repositório-template, sem conta da Cloudflare.
 # Grava `ready=true|false` em $GITHUB_OUTPUT: os passos seguintes só rodam com `ready=true`.
 set -euo pipefail
@@ -16,10 +18,10 @@ environment="${1:?uso: require-deploy-secrets.sh <production|staging>}"
 output="${GITHUB_OUTPUT:-/dev/null}"
 summary="${GITHUB_STEP_SUMMARY:-/dev/stderr}"
 config="${FOREMAN_CONFIG:-foreman.json}"
-secrets_json="${ALL_SECRETS:-}"
-[ -n "$secrets_json" ] || secrets_json="{}"
-
-has() { jq -e --arg k "$1" '(.[$k] // "") != ""' <<<"$secrets_json" >/dev/null; }
+has() {
+  [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+  [ -n "${!1:-}" ]
+}
 
 missing_cloudflare=()
 for name in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID; do
