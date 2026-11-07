@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { socialProviders } from "../auth";
+import { createAuth, socialProviders } from "../auth";
 import { authRequest, cookieFrom, nextTestIp, signUp } from "../test/auth";
 import { createTestDb, type TestDb, testEnv } from "../test/db";
 
@@ -141,6 +141,56 @@ describe("GET /api/auth/providers", () => {
 });
 
 describe("configuração", () => {
+  // O primeiro deploy roda em https://<worker>.<conta>.workers.dev sem ninguém definir
+  // BETTER_AUTH_URL: a URL e a origem confiável vêm do próprio request.
+  const workersDev = "https://meu-app.minha-conta.workers.dev";
+
+  it("sem BETTER_AUTH_URL, usa a origem do request (ex.: *.workers.dev)", async () => {
+    const auth = createAuth({ db: testDb.db, env: testEnv, baseURL: workersDev });
+    const context = await auth.$context;
+
+    expect(context.baseURL).toBe(`${workersDev}/api/auth`);
+    expect(context.isTrustedOrigin(workersDev)).toBe(true);
+    expect(context.isTrustedOrigin("https://outro-site.example.com")).toBe(false);
+  });
+
+  it("com BETTER_AUTH_URL, continua aceitando a própria URL do request", async () => {
+    const auth = createAuth({
+      db: testDb.db,
+      env: { ...testEnv, BETTER_AUTH_URL: "https://app.exemplo.com" },
+      baseURL: workersDev,
+    });
+    const context = await auth.$context;
+
+    expect(context.baseURL).toBe("https://app.exemplo.com/api/auth");
+    expect(context.isTrustedOrigin("https://app.exemplo.com")).toBe(true);
+    expect(context.isTrustedOrigin(workersDev)).toBe(true);
+    expect(context.isTrustedOrigin("https://outro-site.example.com")).toBe(false);
+  });
+
+  it("cadastro em HTTPS na URL do workers.dev abre a sessão com cookie seguro", async () => {
+    const res = await testDb.app.request(
+      `${workersDev}/api/auth/sign-up/email`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Origin: workersDev,
+          "cf-connecting-ip": nextTestIp(),
+        },
+        body: JSON.stringify({
+          name: "Pessoa",
+          email: "pessoa@exemplo.com",
+          password: "senha-segura-123",
+        }),
+      },
+      testEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("__Secure-better-auth.session_token=");
+  });
+
   it("responde 503 sem BETTER_AUTH_SECRET", async () => {
     const res = await testDb.app.request(
       "/api/auth/get-session",

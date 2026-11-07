@@ -1,9 +1,11 @@
+# Lint, typecheck, testes, build e e2e em todo PR e em cada push nas branches que publicam.
+# Não precisa de secrets: o e2e usa um Postgres em memória (PGlite) e uma chave de dev.
 name: CI
 
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [production, staging]
 
 permissions:
   contents: read
@@ -18,6 +20,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Versão do pnpm vem de "packageManager" no package.json.
       - uses: pnpm/action-setup@v6

@@ -1,6 +1,7 @@
 {
   "template": "web",
   "commands": {
+    "setup": "corepack enable && pnpm install --frozen-lockfile",
     "check": "pnpm check"
   },
   "deploy": {

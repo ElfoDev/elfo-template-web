@@ -1,5 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Nome do Worker = subdomínio em https://<name>.<subdomínio>.workers.dev. No deploy do
+  // GitHub o nome vem do repositório (ou da variável CLOUDFLARE_WORKER_NAME), com o sufixo
+  // "-staging" no staging; este valor só vale para um `wrangler deploy` local.
   "name": "elfo-template-web",
   "main": "worker/index.ts",
   "compatibility_date": "2026-11-01",
@@ -11,11 +14,19 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // URL pública em workers.dev. Fica ligada mesmo com domínio próprio: o smoke test do deploy
+  // e o staging usam ela.
+  "workers_dev": true,
+  // Domínio próprio (opcional, só produção: o deploy de staging ignora `routes`). O domínio
+  // precisa estar na mesma conta da Cloudflare. Veja "Domínio próprio" no README.
+  // "routes": [{ "pattern": "app.minhaempresa.com.br", "custom_domain": true }],
   "vars": {
     "APP_NAME": "Elfo Web",
     // URL pública do app, usada pelo Better Auth (links de email, callbacks do
-    // OAuth). Vazia = a origem de cada request, o que serve para o *.workers.dev
-    // e para o dev. Defina ao usar um domínio próprio (ex.: "https://app.exemplo.com").
+    // OAuth). Vazia = a origem de cada request: funciona sem configurar nada no
+    // *.workers.dev, no staging, num domínio próprio e no dev. Vale para production
+    // E staging, então só defina (ex.: "https://app.exemplo.com") se precisar de uma
+    // URL fixa, sabendo que o staging também passa a usá-la nos links e callbacks.
     "BETTER_AUTH_URL": ""
   },
   "secrets": {
