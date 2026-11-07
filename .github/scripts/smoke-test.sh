@@ -5,13 +5,15 @@
 #   3. o Better Auth aceita um POST vindo da própria URL: um login com senha errada responde
 #      401 (e não 403 "origin inválida" nem 503 "sem BETTER_AUTH_SECRET").
 # Logo após o deploy a URL pode levar um tempo para responder: 1 e 2 são repetidos até
-# SMOKE_ATTEMPTS vezes (padrão 12) com SMOKE_INTERVAL segundos (padrão 5) entre elas (~1 min).
+# SMOKE_ATTEMPTS vezes (padrão 36) com SMOKE_INTERVAL segundos (padrão 5) entre elas (~3 min):
+# um Worker novo (o primeiro deploy de produção ou de staging) pode levar mais de 1 min para
+# aparecer no workers.dev.
 # Uso: smoke-test.sh <url>
 set -euo pipefail
 
 base="${1:?uso: smoke-test.sh <url>}"
 base="${base%/}"
-attempts="${SMOKE_ATTEMPTS:-12}"
+attempts="${SMOKE_ATTEMPTS:-36}"
 interval="${SMOKE_INTERVAL:-5}"
 body="$(mktemp)"
 trap 'rm -f "$body"' EXIT
