@@ -125,8 +125,8 @@ e2e/                      Playwright (smoke, auth, CRUD de projetos)
 - **Secrets opcionais** (ex.: OAuth): **não** vão em `secrets.required` (o `wrangler deploy`
   falha se faltar algum de lá). Declare o tipo em `worker/types.ts` (`interface Env`, campo
   opcional), adicione o nome em `OPTIONAL_SECRETS` no `vite.config.ts` (é ele que os passa do
-  `.dev.vars` para o Worker no `pnpm dev`) e liste em `foreman.json → secrets` com
-  `"optional": true`.
+  `.dev.vars` para o Worker no `pnpm dev`), liste em `foreman.json → secrets` com
+  `"optional": true` e passe pelo nome em `deploy.yml` (veja "Deploy").
 - **Textos da UI** em português (pt-BR). Código (nomes) em inglês.
 - **Formatação**: deixe o Biome decidir (`pnpm format`). Não desative regras sem comentário
   explicando o motivo.
@@ -341,7 +341,9 @@ Cloudflare Workers + Neon, por `.github/workflows/deploy.yml` (passos em `.githu
   migrations, com pooling para o app), `NEON_API_KEY` + `NEON_PROJECT_ID` (staging) e os do app.
   O Worker recebe os de `foreman.json → secrets` que existirem no repositório e a `DATABASE_URL`
   com pooling do ambiente. Secret novo do app: declare em `foreman.json → secrets` (nunca
-  `CLOUDFLARE_*`, `NEON_*`, `DATABASE_URL*` nem `GITHUB_*`), não precisa mexer no workflow.
+  `CLOUDFLARE_*`, `NEON_*`, `DATABASE_URL*` nem `GITHUB_*`) e passe pelo nome em `deploy.yml`, nos
+  passos "Verificar secrets" e "Secrets do Worker" (`NOME: ${{ secrets.NOME }}`). Nunca entregue todos
+  os secrets de uma vez a um script: o GitHub segura esse run em repositórios públicos.
   Secrets do environment do GitHub (`staging` ou `production`) sobrepõem os do repositório com o
   mesmo nome: use para um `BETTER_AUTH_SECRET` ou um app OAuth só do staging.
 - **Dados do staging**: a branch `staging` do Neon nasce como cópia da padrão (schema, histórico
